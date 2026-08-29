@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>P2P Watch</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="page">
+
+  <header>
+    <h1>P2P Watch</h1>
+    <div class="header-right">
+      <button type="button" id="clear-selection-btn" class="clear-btn" hidden>Limpar seleção</button>
+      <select id="refresh-interval" class="refresh-interval" title="Intervalo de atualização">
+        <option value="5000">5s</option>
+        <option value="15000" selected>15s</option>
+        <option value="30000">30s</option>
+        <option value="60000">60s</option>
+      </select>
+      <button type="button" id="theme-toggle" class="icon-btn" title="Alternar tema claro/escuro">☾</button>
+      <div class="refresh-status" id="refresh-status">a carregar...</div>
+    </div>
+  </header>
+
+  <section class="controls">
+    <div class="control-group">
+      <span class="control-label">Plataforma</span>
+      <div class="segmented" id="platform-picker"></div>
+    </div>
+
+    <div class="control-group">
+      <span class="control-label">Moeda</span>
+      <div class="control-row">
+        <input list="fiat-suggestions" id="fiat-input" value="MZN" spellcheck="false" />
+        <datalist id="fiat-suggestions"></datalist>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <span class="control-label">Criptomoeda</span>
+      <div class="control-row">
+        <input list="asset-suggestions" id="asset-input" value="USDT" spellcheck="false" />
+        <datalist id="asset-suggestions"></datalist>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <div class="section-head-row">
+        <span class="control-label">Tenho</span>
+        <span class="control-label" id="fee-toggle-label">Taxa %</span>
+      </div>
+      <div class="mode-toggle" id="amount-mode-toggle">
+        <button type="button" class="mode-btn active" data-mode="fiat">Dinheiro</button>
+        <button type="button" class="mode-btn" data-mode="crypto">Cripto</button>
+      </div>
+      <div class="control-row amount-row">
+        <input type="number" id="amount-input" min="0" step="any" value="1000" />
+        <span class="amount-unit" id="amount-unit">MZN</span>
+        <input type="number" id="fee-input" class="fee-input" min="0" step="any" value="0" title="Taxa % a descontar do valor final (banco, carteira, levantamento)" />
+      </div>
+    </div>
+  </section>
+
+  <section class="hero-card" id="hero-card">
+    <div class="hero-kicker" id="hero-kicker">A calcular...</div>
+    <div class="hero-headline" id="hero-headline"></div>
+    <div class="hero-number-row">
+      <span class="hero-number" id="hero-number">—</span>
+      <span class="hero-number-label" id="hero-number-label"></span>
+    </div>
+    <div class="hero-total-row" id="hero-total-row"></div>
+    <div class="hero-legs" id="hero-legs"></div>
+    <div class="hero-detail" id="hero-detail"></div>
+  </section>
+
+  <section class="card compare-section">
+    <div class="section-head-row">
+      <span class="control-label">Comparação rápida entre plataformas</span>
+      <span class="hint">preço sem filtro de método · clica para trocar</span>
+    </div>
+    <div class="compare-strip" id="compare-strip">
+      <span class="muted">a carregar...</span>
+    </div>
+  </section>
+
+  <section class="card best-asset-section">
+    <div class="section-head-row">
+      <span class="control-label">Melhor cripto para os teus métodos favoritos ★</span>
+      <button type="button" id="best-asset-scan-btn" class="mode-btn">Escanear</button>
+    </div>
+    <p class="hint" id="best-asset-hint">Marca métodos com ★ na lista abaixo para ativar isto.</p>
+    <div class="best-asset-list" id="best-asset-list"></div>
+  </section>
+
+  <section class="methods-section">
+    <div class="section-head-row">
+      <span class="control-label">Métodos de pagamento nesta plataforma (A–Z, todas as moedas)</span>
+      <span class="hint" id="methods-depth-note"></span>
+    </div>
+    <p class="hint">Clica no nome para filtrar · clica na ★ para marcar como favorito (fica sempre selecionado) · clica numa moeda para saltar logo para ela</p>
+    <div class="method-search-row">
+      <input type="text" id="method-search" class="method-search" placeholder="Procurar método (ex: Wise, M-Pesa, Dukascopy)..." spellcheck="false" />
+      <button type="button" id="fiat-only-toggle" class="mode-btn" title="Mostrar só métodos com anúncios na moeda atual">Só em <span id="fiat-only-code"></span></button>
+    </div>
+    <div class="method-grid-wrap">
+      <div class="method-grid" id="methods-picker">
+        <span class="muted">a carregar...</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="summary" id="summary">
+    <div class="stat">
+      <span class="stat-label">Melhor compra</span>
+      <span class="stat-value" id="stat-buy">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Melhor venda</span>
+      <span class="stat-value" id="stat-sell">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Spread</span>
+      <span class="stat-value" id="stat-spread">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label" id="gain-label">Ganho estimado</span>
+      <span class="stat-value" id="stat-gain">—</span>
+      <span class="stat-note" id="gain-note"></span>
+    </div>
+  </section>
+
+  <section class="card alerts-bar">
+    <button type="button" id="alerts-toggle" class="mode-btn">🔔 Ativar alertas</button>
+    <span class="hint">avisar quando o spread for pelo menos</span>
+    <input type="number" id="alerts-threshold" class="alerts-threshold" min="0" step="any" value="2" />
+    <span class="hint">%</span>
+    <span class="hint" id="alerts-status"></span>
+  </section>
+
+  <p class="transparency-note" id="transparency-note"></p>
+  <div id="redirect-hint"></div>
+
+  <section class="results">
+    <div class="results-col">
+      <h2>Comprar <span class="hint">anúncios de venda, mais barato primeiro</span></h2>
+      <div class="ads-list" id="buy-list"></div>
+    </div>
+    <div class="results-col">
+      <h2>Vender <span class="hint">anúncios de compra, mais caro primeiro</span></h2>
+      <div class="ads-list" id="sell-list"></div>
+    </div>
+  </section>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

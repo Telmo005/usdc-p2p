@@ -1,0 +1,15 @@
+{
+  "name": "binance-p2p-dashboard",
+  "version": "1.0.0",
+  "description": "Dashboard para dados P2P da Binance: pesquisa por moeda, ranking de metodos de pagamento e calculadora de arbitragem compra/venda.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "compression": "^1.8.1",
+    "express": "^4.19.2"
+  }
+}

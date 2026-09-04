@@ -18,6 +18,19 @@ let inFlight = false;
 let refreshTimer = null;
 let availableFiats = [];
 let availableExchanges = []; // [{id, name}], loaded from /api/defaults
+let lastCycleData = null; // last successful cycle response, so the ad picker can read its candidates
+
+// Manual ad overrides, keyed 'buyA' | 'sellA' | 'buyB' | 'sellB' (server's leg
+// naming - always "the leg starting from balance" / "the leg closing it",
+// regardless of which UI fiat that currently is). Not persisted: an advNo
+// only stays valid for a few minutes, so resurrecting a pin from a past
+// session would almost always just silently miss anyway - clearing on
+// reload is the honest behavior.
+let pins = {};
+
+function clearPins() {
+  pins = {};
+}
 
 const state = loadState();
 
@@ -80,21 +93,81 @@ function hideNode(el) {
 
 const PLATFORM_CLASS = { Binance: 'plat-binance', Bybit: 'plat-bybit', OKX: 'plat-okx' };
 
-function setCaption(el, kind, leg, num) {
+/** `legKey`/`sideKey` ('A'|'B', 'buy'|'sell') identify which pin this box's click should set - stashed as data attrs so the click handler doesn't have to recompute the start-dependent mapping. */
+function setCaption(el, kind, leg, num, legKey, sideKey) {
   el.hidden = false;
+  el.dataset.legKey = legKey;
+  el.dataset.sideKey = sideKey;
+  el.classList.toggle('is-manual', !!leg.manual);
   const warning = leg.fits === false ? `<div class="ccaption-warning">fora dos limites (${fmt(leg.minAmount, 0)}–${fmt(leg.maxAmount, 0)})</div>` : '';
   const platformTag = leg.platform ? `<span class="ccaption-platform ${PLATFORM_CLASS[leg.platform] || ''}">${leg.platform}</span>` : '';
+  const manualTag = leg.manual ? `<div class="ccaption-manual-tag">escolhido à mão</div>` : '';
   el.innerHTML = `
     <span class="badge-num">${num}</span>
     ${platformTag}
     <div class="ccaption-kind">${kind === 'buy' ? 'Taxa de compra' : 'Taxa de venda'}</div>
     <div class="ccaption-price">${fmt(leg.price, 4)}</div>
     <div class="ccaption-method">${leg.method ?? '-'} <span class="ccaption-who">· ${leg.advertiser ?? '-'}</span></div>
+    ${manualTag}
     ${warning}`;
 }
 
 function hideCaption(el) {
   el.hidden = true;
+}
+
+const PIN_KEY = { A: { buy: 'buyA', sell: 'sellA' }, B: { buy: 'buyB', sell: 'sellB' } };
+const KIND_LABEL = { buy: 'Taxa de compra', sell: 'Taxa de venda' };
+
+/** Opens the ad picker for one leg/side, listing every reputable candidate the last successful cycle response saw for it (plus "Automático" to clear a pin). */
+function openAdPicker(legKey, sideKey) {
+  if (!lastCycleData) return;
+  const leg = legKey === 'A' ? lastCycleData.legA : lastCycleData.legB;
+  const info = leg?.[sideKey];
+  if (!info) return;
+
+  const pinField = PIN_KEY[legKey][sideKey];
+  const currentPin = pins[pinField];
+
+  $('#ad-picker-title').textContent = `${KIND_LABEL[sideKey]} · escolher anúncio`;
+
+  const rows = [
+    `<button type="button" class="ad-picker-row auto ${!currentPin ? 'active' : ''}" data-auto="1">
+      <span class="apr-price">Auto</span>
+      <span class="apr-details"><span class="apr-method">Automático (melhor preço que caiba no valor)</span></span>
+    </button>`,
+    ...info.candidates.map((c) => {
+      const isActive = !!currentPin && currentPin.platform === c.platform && String(currentPin.advNo) === String(c.advNo);
+      const platformClass = PLATFORM_CLASS[c.platformName] || '';
+      return `<button type="button" class="ad-picker-row ${isActive ? 'active' : ''}" data-platform="${c.platform}" data-advno="${c.advNo}">
+        <span class="apr-price">${fmt(c.price, 4)}</span>
+        <span class="apr-platform ${platformClass}">${c.platformName}</span>
+        <span class="apr-details">
+          <span class="apr-method">${c.method ?? '-'}</span>
+          <span class="apr-adv">${c.advertiser ?? '-'} · ${fmt(c.minAmount, 0)}–${fmt(c.maxAmount, 0)}</span>
+        </span>
+      </button>`;
+    }),
+  ];
+
+  $('#ad-picker-list').innerHTML = rows.join('');
+  $('#ad-picker-list').querySelectorAll('.ad-picker-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      if (row.dataset.auto) {
+        delete pins[pinField];
+      } else {
+        pins[pinField] = { platform: row.dataset.platform, advNo: row.dataset.advno };
+      }
+      closeAdPicker();
+      refresh();
+    });
+  });
+
+  $('#ad-picker-overlay').hidden = false;
+}
+
+function closeAdPicker() {
+  $('#ad-picker-overlay').hidden = true;
 }
 
 /**
@@ -121,7 +194,10 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
     return;
   }
   diagram.classList.remove('has-error');
+  lastCycleData = data;
 
+  const legAKey = start === 'a' ? 'A' : 'B'; // which server leg (legA/legB) the N->E->S half of the diagram is right now
+  const legBKey = start === 'a' ? 'B' : 'A'; // and the S->W->N half
   const legAtoUsdt = start === 'a' ? data.legA : data.legB; // buy leg using fiatA (arc N->E)
   const legUsdtToB = start === 'a' ? data.legA : data.legB; // same leg's sell half (arc E->S)
   const legBtoUsdt = start === 'a' ? data.legB : data.legA; // buy leg using fiatB (arc S->W)
@@ -147,8 +223,8 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
 
   if (showEast) {
     setNode($('#node-e'), usdtFromA, 'USDT', start === 'a' ? 'Compraste' : 'Recompraste', false);
-    setCaption($('#cap-ne'), 'buy', legAtoUsdt.buy, 1);
-    setCaption($('#cap-se'), 'sell', legUsdtToB.sell, 2);
+    setCaption($('#cap-ne'), 'buy', legAtoUsdt.buy, 1, legAKey, 'buy');
+    setCaption($('#cap-se'), 'sell', legUsdtToB.sell, 2, legAKey, 'sell');
   } else {
     hideNode($('#node-e'));
     hideCaption($('#cap-ne'));
@@ -157,8 +233,8 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
 
   if (showWest) {
     setNode($('#node-w'), usdtFromB, 'USDT', start === 'b' ? 'Compraste' : 'Recompraste', false);
-    setCaption($('#cap-sw'), 'buy', legBtoUsdt.buy, 3);
-    setCaption($('#cap-nw'), 'sell', legUsdtToA.sell, 4);
+    setCaption($('#cap-sw'), 'buy', legBtoUsdt.buy, 3, legBKey, 'buy');
+    setCaption($('#cap-nw'), 'sell', legUsdtToA.sell, 4, legBKey, 'sell');
   } else {
     hideNode($('#node-w'));
     hideCaption($('#cap-sw'));
@@ -237,6 +313,10 @@ function currentUrl() {
   if (state.methodA.length) params.set('methodA', state.methodA.join(','));
   if (state.methodB.length) params.set('methodB', state.methodB.join(','));
   if (state.exchanges.length) params.set('exchanges', state.exchanges.join(','));
+  if (pins.buyA) params.set('pickLegABuy', `${pins.buyA.platform}:${pins.buyA.advNo}`);
+  if (pins.sellA) params.set('pickLegASell', `${pins.sellA.platform}:${pins.sellA.advNo}`);
+  if (pins.buyB) params.set('pickLegBBuy', `${pins.buyB.platform}:${pins.buyB.advNo}`);
+  if (pins.sellB) params.set('pickLegBSell', `${pins.sellB.platform}:${pins.sellB.advNo}`);
   return `/api/corridor?${params}`;
 }
 
@@ -434,6 +514,7 @@ function renderExchangeOptions() {
         return;
       }
       state.exchanges = checked.length === availableExchanges.length ? [] : checked;
+      clearPins();
       updateExchangeTrigger();
       saveState();
       loadMethods('a');
@@ -483,6 +564,7 @@ async function loadMethods(which) {
         else set.delete(cb.value);
         if (which === 'a') state.methodA = [...set];
         else state.methodB = [...set];
+        clearPins();
         updateMethodTrigger(which);
         saveState();
         refresh();
@@ -517,6 +599,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#fiat-a-select').addEventListener('change', (e) => {
     state.fiatA = e.target.value;
     state.methodA = [];
+    clearPins();
     saveState();
     updateTitles();
     loadMethods('a').then(refresh);
@@ -525,6 +608,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#fiat-b-select').addEventListener('change', (e) => {
     state.fiatB = e.target.value;
     state.methodB = [];
+    clearPins();
     saveState();
     updateTitles();
     loadMethods('b').then(refresh);
@@ -554,6 +638,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (btn.dataset.start === state.start) return;
       state.start = btn.dataset.start;
       document.querySelectorAll('#start-toggle .toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      clearPins();
       saveState();
       updateBalanceBadge();
       refresh();
@@ -575,6 +660,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     [state.methodA, state.methodB] = [state.methodB, state.methodA];
     $('#fiat-a-select').value = state.fiatA;
     $('#fiat-b-select').value = state.fiatB;
+    clearPins();
     saveState();
     updateTitles();
     closeAllMultiselects();
@@ -582,6 +668,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   $('#scan-btn').addEventListener('click', runScanner);
+
+  $('#cycle-diagram').addEventListener('click', (e) => {
+    const cap = e.target.closest('.ccaption');
+    if (!cap || cap.hidden) return;
+    openAdPicker(cap.dataset.legKey, cap.dataset.sideKey);
+  });
+
+  $('#ad-picker-close').addEventListener('click', closeAdPicker);
+  $('#ad-picker-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'ad-picker-overlay') closeAdPicker();
+  });
 
   // A backgrounded tab gains nothing from polling - pause while hidden, catch up instantly when it's visible again.
   document.addEventListener('visibilitychange', () => {

@@ -532,6 +532,23 @@ h1 .loop-icon {
   border: 1px solid var(--border-soft);
   border-radius: 12px;
   padding: 8px 8px 7px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.ccaption:hover { border-color: var(--accent); }
+
+.ccaption.is-manual {
+  border-color: var(--fiat-b);
+  background: rgba(79, 163, 201, 0.08);
+}
+
+.ccaption-manual-tag {
+  font-size: 0.56rem;
+  color: var(--fiat-b);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .badge-num {
@@ -872,3 +889,127 @@ h1 .loop-icon {
   .ccaption-price { font-size: 0.76rem; }
   .ccaption-method, .ccaption-who { display: none; }
 }
+
+/* --- Ad picker: overrides the automatic pick for one leg of the cycle. --- */
+
+.ad-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.ad-picker {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 440px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-card);
+}
+
+.ad-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.ad-picker-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.ad-picker-close {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.ad-picker-close:hover { color: var(--text); }
+
+.ad-picker-list {
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.ad-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 10px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-family: var(--sans);
+}
+
+.ad-picker-row:hover { background: var(--surface-raised); }
+
+.ad-picker-row.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.apr-price {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.95rem;
+  min-width: 70px;
+}
+
+.apr-platform {
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.apr-platform.plat-binance { color: #e0ab4a; border-color: rgba(224, 171, 74, 0.4); }
+.apr-platform.plat-bybit { color: #f7a600; border-color: rgba(247, 166, 0, 0.4); }
+.apr-platform.plat-okx { color: #a3a7b3; border-color: rgba(163, 167, 179, 0.4); }
+
+.apr-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.apr-method {
+  font-size: 0.78rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apr-adv {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ad-picker-row.auto .apr-price { color: var(--accent); font-size: 0.82rem; }

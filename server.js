@@ -66,40 +66,85 @@ function fitsSell(ad, qty) {
 }
 
 /**
- * Best reputable, non-outlier ad for a side: cheapest if buying, priciest if
- * selling. `methods`, if given (one name or an array of them), restricts to
- * ads offering ANY of them - e.g. "aceito M-Pesa ou e-Mola" should widen the
- * pool of usable ads, not narrow it to a single wallet. `fitCheck(ad)`, if
- * given, is preferred: among several exchanges the very best price is often a
- * tiny, thin-liquidity ad that can't actually absorb this trade's size -
- * picking it anyway would silently cap the leg's proceeds at whatever
+ * Every reputable, non-outlier ad for a side, ranked best-first (cheapest if
+ * buying, priciest if selling). `methods`, if given (one name or an array of
+ * them), restricts to ads offering ANY of them - e.g. "aceito M-Pesa ou
+ * e-Mola" should widen the pool of usable ads, not narrow it to a single
+ * wallet. Exposed as a ranked list (not just the single winner) so the UI can
+ * offer manual alternatives instead of only ever trusting the automatic pick.
+ */
+function rankAds(ads, side, methods) {
+  const wanted = Array.isArray(methods) ? methods : methods ? [methods] : [];
+  const candidates = wanted.length ? ads.filter((ad) => ad.payTypes.some((pt) => wanted.includes(pt.name))) : ads;
+  const reputable = dropPriceOutliers(candidates.filter(isReputable), side);
+  return side === 'buy' ? reputable.sort((a, b) => a.price - b.price) : reputable.sort((a, b) => b.price - a.price);
+}
+
+/**
+ * Picks from an already-ranked list. `pin`, if given ({platform, advNo}),
+ * wins whenever that exact ad is still present in `ranked` - an explicit
+ * manual choice from a past request should stick until it genuinely
+ * disappears from the book, not get silently overridden by a fresher
+ * automatic pick. `fitCheck(ad)`, if given, is preferred over the raw best
+ * price when there's no pin: among several exchanges the very best price is
+ * often a tiny, thin-liquidity ad that can't actually absorb this trade's
+ * size - picking it anyway would silently cap the leg's proceeds at whatever
  * fraction the ad can fill, producing a nonsense result. When nothing fits,
  * this still falls back to the best price overall (unchanged legacy
  * behavior) so a genuinely undersized trade still sees the closest real
  * quote, flagged via legInfo(...).fits, rather than a hard error.
  */
-function bestAd(ads, side, methods, fitCheck) {
-  const wanted = Array.isArray(methods) ? methods : methods ? [methods] : [];
-  const candidates = wanted.length ? ads.filter((ad) => ad.payTypes.some((pt) => wanted.includes(pt.name))) : ads;
-  const reputable = dropPriceOutliers(candidates.filter(isReputable), side);
-  if (!reputable.length) return null;
-  const sorted = side === 'buy' ? reputable.sort((a, b) => a.price - b.price) : reputable.sort((a, b) => b.price - a.price);
-  if (fitCheck) {
-    const fitting = sorted.find(fitCheck);
-    if (fitting) return fitting;
-  }
-  return sorted[0];
+function matchesPin(ad, pin) {
+  return !!pin && ad.platform === pin.platform && String(ad.advNo) === String(pin.advNo);
 }
 
-function legInfo(ad, amountInThisLeg) {
+function pickAd(ranked, fitCheck, pin) {
+  if (!ranked.length) return null;
+  if (pin) {
+    const pinned = ranked.find((ad) => matchesPin(ad, pin));
+    if (pinned) return pinned;
+  }
+  if (fitCheck) {
+    const fitting = ranked.find(fitCheck);
+    if (fitting) return fitting;
+  }
+  return ranked[0];
+}
+
+/** Best reputable, non-outlier ad for a side - convenience wrapper over rankAds()+pickAd() for callers that don't need the full ranked list (e.g. /api/methods). */
+function bestAd(ads, side, methods, fitCheck) {
+  return pickAd(rankAds(ads, side, methods), fitCheck);
+}
+
+/** A small, UI-ready summary of one candidate ad - just enough to render a picker row and to re-identify it later via a pin. */
+function candidateInfo(ad) {
+  return {
+    platform: ad.platform,
+    platformName: PLATFORM_NAMES[ad.platform] || ad.platform,
+    advNo: ad.advNo,
+    price: ad.price,
+    advertiser: ad.advertiser.nickName,
+    method: ad.payTypes[0]?.name ?? null,
+    minAmount: ad.minAmount,
+    maxAmount: ad.maxAmount,
+  };
+}
+
+const MAX_CANDIDATES = 8;
+
+function legInfo(ad, amountInThisLeg, ranked, isPinned) {
   return {
     price: ad.price,
     advertiser: ad.advertiser.nickName,
     method: ad.payTypes[0]?.name ?? null,
     platform: PLATFORM_NAMES[ad.platform] || ad.platform,
+    platformId: ad.platform,
+    advNo: ad.advNo,
     minAmount: ad.minAmount,
     maxAmount: ad.maxAmount,
     fits: amountInThisLeg >= ad.minAmount && amountInThisLeg <= ad.maxAmount,
+    manual: !!isPinned,
+    candidates: (ranked || []).slice(0, MAX_CANDIDATES).map(candidateInfo),
   };
 }
 
@@ -157,40 +202,56 @@ function fmtMethod(method) {
   return names.length ? ` via ${names.join(' ou ')}` : '';
 }
 
-function computeCycle({ startFiat, midFiat, balance, startBuyAds, midSellAds, midBuyAds, startSellAds, startMethod, midMethod }) {
+function computeCycle({ startFiat, midFiat, balance, startBuyAds, midSellAds, midBuyAds, startSellAds, startMethod, midMethod, picks = {} }) {
   const base = { startFiat, midFiat, balance };
 
   // Each ad is picked in order, size-aware against the amount THAT specific
   // hop actually carries - buyA against the starting balance, sellA against
   // however much USDT buyA's own price and capacity yielded, and so on. That
   // amount only exists once the previous hop is resolved, so the two legs of
-  // each conversion can no longer be picked independently/concurrently.
-  const buyA = bestAd(startBuyAds, 'buy', startMethod, (ad) => fitsBuy(ad, balance));
+  // each conversion can no longer be picked independently/concurrently. A
+  // manual pick in `picks` (from a user overriding the automatic choice in
+  // the UI) wins over the automatic pick whenever that exact ad still exists.
+  const buyARanked = rankAds(startBuyAds, 'buy', startMethod);
+  const buyA = pickAd(buyARanked, (ad) => fitsBuy(ad, balance), picks.buyA);
   if (!buyA) {
     return { ...base, error: `Sem anúncios para comprar em ${startFiat}${fmtMethod(startMethod)} agora.` };
   }
   const qtyA = Math.min(balance / buyA.price, buyA.tradableQuantity || Infinity);
 
-  const sellA = bestAd(midSellAds, 'sell', midMethod, (ad) => fitsSell(ad, qtyA));
+  const sellARanked = rankAds(midSellAds, 'sell', midMethod);
+  const sellA = pickAd(sellARanked, (ad) => fitsSell(ad, qtyA), picks.sellA);
   if (!sellA) {
     return { ...base, error: `Sem anúncios para vender em ${midFiat}${fmtMethod(midMethod)} agora.` };
   }
   const midAmount = qtyA * sellA.price; // now holding this much in midFiat
-  const legA = { buy: legInfo(buyA, balance), sell: legInfo(sellA, midAmount), qty: qtyA, proceeds: midAmount };
+  const legA = {
+    buy: legInfo(buyA, balance, buyARanked, matchesPin(buyA, picks.buyA)),
+    sell: legInfo(sellA, midAmount, sellARanked, matchesPin(sellA, picks.sellA)),
+    qty: qtyA,
+    proceeds: midAmount,
+  };
 
-  const buyB = bestAd(midBuyAds, 'buy', midMethod, (ad) => fitsBuy(ad, midAmount));
+  const buyBRanked = rankAds(midBuyAds, 'buy', midMethod);
+  const buyB = pickAd(buyBRanked, (ad) => fitsBuy(ad, midAmount), picks.buyB);
   if (!buyB) {
     return { ...base, legA, error: `Sem anúncios para comprar em ${midFiat}${fmtMethod(midMethod)}, para fechar o ciclo.` };
   }
   const qtyB = Math.min(midAmount / buyB.price, buyB.tradableQuantity || Infinity);
 
-  const sellB = bestAd(startSellAds, 'sell', startMethod, (ad) => fitsSell(ad, qtyB));
+  const sellBRanked = rankAds(startSellAds, 'sell', startMethod);
+  const sellB = pickAd(sellBRanked, (ad) => fitsSell(ad, qtyB), picks.sellB);
   if (!sellB) {
     return { ...base, legA, error: `Sem anúncios para vender em ${startFiat}${fmtMethod(startMethod)}, para fechar o ciclo.` };
   }
   const finalAmount = qtyB * sellB.price; // back in startFiat
 
-  const legB = { buy: legInfo(buyB, midAmount), sell: legInfo(sellB, finalAmount), qty: qtyB, proceeds: finalAmount };
+  const legB = {
+    buy: legInfo(buyB, midAmount, buyBRanked, matchesPin(buyB, picks.buyB)),
+    sell: legInfo(sellB, finalAmount, sellBRanked, matchesPin(sellB, picks.sellB)),
+    qty: qtyB,
+    proceeds: finalAmount,
+  };
 
   const profit = finalAmount - balance;
   const profitPct = balance > 0 ? (profit / balance) * 100 : null;
@@ -266,6 +327,24 @@ app.get('/api/corridor', async (req, res) => {
     const startBook = start === fiatA ? bookA : bookB;
     const midBook = start === fiatA ? bookB : bookA;
 
+    // A manual override from the ad picker in the UI - "platform:advNo" - for
+    // one specific hop of the cycle. Anything malformed or missing is just no
+    // pin at all, falling straight back to the automatic pick.
+    const parsePick = (raw) => {
+      if (!raw) return null;
+      const sep = String(raw).indexOf(':');
+      if (sep < 0) return null;
+      const platform = raw.slice(0, sep);
+      const advNo = raw.slice(sep + 1);
+      return platform && advNo ? { platform, advNo } : null;
+    };
+    const picks = {
+      buyA: parsePick(req.query.pickLegABuy),
+      sellA: parsePick(req.query.pickLegASell),
+      buyB: parsePick(req.query.pickLegBBuy),
+      sellB: parsePick(req.query.pickLegBSell),
+    };
+
     const cycle = computeCycle({
       startFiat: start,
       midFiat: mid,
@@ -276,6 +355,7 @@ app.get('/api/corridor', async (req, res) => {
       startSellAds: startBook.sell,
       startMethod,
       midMethod,
+      picks,
     });
 
     res.json({ generatedAt: new Date().toISOString(), cycle });

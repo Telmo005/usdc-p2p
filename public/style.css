@@ -482,7 +482,11 @@ h1 .loop-icon {
   border: 2px solid var(--border);
   z-index: 2;
   box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.15s ease;
 }
+
+.cnode.is-clickable { cursor: pointer; }
+.cnode.is-clickable:hover { border-color: var(--accent); }
 
 .pos-n { top: 7%; left: 50%; }
 .pos-e { top: 50%; left: 93%; }

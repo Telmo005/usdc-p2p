@@ -79,8 +79,18 @@ function orientRates(startUnit, midUnit, startPerUsdt, midPerUsdt, startToMid, m
   };
 }
 
-function setNode(el, amount, unit, label, isFiat) {
+/** `legKey`/`sideKey`, when given, mean this node's amount comes straight from that leg's ad - clicking it opens the same picker as its neighboring rate box. The anchor node (your starting balance) has no ad behind it, so it's left non-interactive. */
+function setNode(el, amount, unit, label, isFiat, legKey, sideKey) {
   el.hidden = false;
+  const clickable = !!legKey;
+  el.classList.toggle('is-clickable', clickable);
+  if (clickable) {
+    el.dataset.legKey = legKey;
+    el.dataset.sideKey = sideKey;
+  } else {
+    delete el.dataset.legKey;
+    delete el.dataset.sideKey;
+  }
   el.innerHTML = `
     <div class="cnode-label">${label}</div>
     <div class="cnode-amount">${isFiat ? fmt(amount) : amount.toFixed(2)}</div>
@@ -212,8 +222,10 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
   const usdtFromB = legBtoUsdt.qty;
 
   const anchorLabel = mode === 'full' ? 'Começa/fecha aqui' : 'Começa aqui';
-  setNode($('#node-n'), aAmount, fiatA, start === 'a' ? anchorLabel : mode === 'full' ? 'Ficas com' : 'Fica com', true);
-  setNode($('#node-s'), bAmount, fiatB, start === 'b' ? anchorLabel : mode === 'full' ? 'Ficas com' : 'Fica com', true);
+  // Whichever of N/S isn't the anchor always shows data.legA's proceeds -
+  // that's what ties it to (legKey 'A', 'sell') regardless of which UI fiat it is.
+  setNode($('#node-n'), aAmount, fiatA, start === 'a' ? anchorLabel : mode === 'full' ? 'Ficas com' : 'Fica com', true, start === 'a' ? null : 'A', start === 'a' ? null : 'sell');
+  setNode($('#node-s'), bAmount, fiatB, start === 'b' ? anchorLabel : mode === 'full' ? 'Ficas com' : 'Fica com', true, start === 'b' ? null : 'A', start === 'b' ? null : 'sell');
 
   $('#node-n').classList.toggle('node-anchor', start === 'a');
   $('#node-s').classList.toggle('node-anchor', start === 'b');
@@ -222,7 +234,7 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
   const showWest = start === 'b' || mode === 'full';
 
   if (showEast) {
-    setNode($('#node-e'), usdtFromA, 'USDT', start === 'a' ? 'Compraste' : 'Recompraste', false);
+    setNode($('#node-e'), usdtFromA, 'USDT', start === 'a' ? 'Compraste' : 'Recompraste', false, legAKey, 'buy');
     setCaption($('#cap-ne'), 'buy', legAtoUsdt.buy, 1, legAKey, 'buy');
     setCaption($('#cap-se'), 'sell', legUsdtToB.sell, 2, legAKey, 'sell');
   } else {
@@ -232,7 +244,7 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
   }
 
   if (showWest) {
-    setNode($('#node-w'), usdtFromB, 'USDT', start === 'b' ? 'Compraste' : 'Recompraste', false);
+    setNode($('#node-w'), usdtFromB, 'USDT', start === 'b' ? 'Compraste' : 'Recompraste', false, legBKey, 'buy');
     setCaption($('#cap-sw'), 'buy', legBtoUsdt.buy, 3, legBKey, 'buy');
     setCaption($('#cap-nw'), 'sell', legUsdtToA.sell, 4, legBKey, 'sell');
   } else {
@@ -670,9 +682,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#scan-btn').addEventListener('click', runScanner);
 
   $('#cycle-diagram').addEventListener('click', (e) => {
-    const cap = e.target.closest('.ccaption');
-    if (!cap || cap.hidden) return;
-    openAdPicker(cap.dataset.legKey, cap.dataset.sideKey);
+    const target = e.target.closest('.ccaption, .cnode');
+    if (!target || target.hidden || !target.dataset.legKey) return;
+    openAdPicker(target.dataset.legKey, target.dataset.sideKey);
   });
 
   $('#ad-picker-close').addEventListener('click', closeAdPicker);

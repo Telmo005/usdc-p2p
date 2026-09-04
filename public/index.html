@@ -42,8 +42,11 @@
           <select id="fiat-a-select" class="fiat-select"></select>
         </div>
         <div class="field-group">
-          <label for="method-a-select">Carteira A</label>
-          <select id="method-a-select" class="method-select"><option value="">Qualquer</option></select>
+          <label>Carteira A</label>
+          <div class="multiselect" id="method-a-multiselect">
+            <button type="button" class="multiselect-trigger method-select" id="method-a-trigger">Qualquer</button>
+            <div class="multiselect-panel" id="method-a-panel" hidden></div>
+          </div>
         </div>
       </div>
       <button type="button" class="swap-btn" id="swap-btn" title="Trocar moedas">⇄</button>
@@ -53,8 +56,11 @@
           <select id="fiat-b-select" class="fiat-select"></select>
         </div>
         <div class="field-group">
-          <label for="method-b-select">Carteira B</label>
-          <select id="method-b-select" class="method-select"><option value="">Qualquer</option></select>
+          <label>Carteira B</label>
+          <div class="multiselect" id="method-b-multiselect">
+            <button type="button" class="multiselect-trigger method-select" id="method-b-trigger">Qualquer</button>
+            <div class="multiselect-panel" id="method-b-panel" hidden></div>
+          </div>
         </div>
       </div>
     </div>

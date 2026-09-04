@@ -27,13 +27,13 @@ function loadState() {
       balance: Number(saved.balance) > 0 ? Number(saved.balance) : 1000,
       fiatA: saved.fiatA || 'MZN',
       fiatB: saved.fiatB || 'ZAR',
-      methodA: saved.methodA || '',
-      methodB: saved.methodB || '',
+      methodA: Array.isArray(saved.methodA) ? saved.methodA : [],
+      methodB: Array.isArray(saved.methodB) ? saved.methodB : [],
       start: saved.start === 'b' ? 'b' : 'a',
       mode: saved.mode === 'partial' ? 'partial' : 'full',
     };
   } catch {
-    return { balance: 1000, fiatA: 'MZN', fiatB: 'ZAR', methodA: '', methodB: '', start: 'a', mode: 'full' };
+    return { balance: 1000, fiatA: 'MZN', fiatB: 'ZAR', methodA: [], methodB: [], start: 'a', mode: 'full' };
   }
 }
 
@@ -231,8 +231,8 @@ function currentUrl() {
   // diagram) - only `start` (the actual fiat code that's the anchor) varies.
   const startFiat = state.start === 'a' ? state.fiatA : state.fiatB;
   const params = new URLSearchParams({ balance: state.balance, fiatA: state.fiatA, fiatB: state.fiatB, start: startFiat });
-  if (state.methodA) params.set('methodA', state.methodA);
-  if (state.methodB) params.set('methodB', state.methodB);
+  if (state.methodA.length) params.set('methodA', state.methodA.join(','));
+  if (state.methodB.length) params.set('methodB', state.methodB.join(','));
   return `/api/corridor?${params}`;
 }
 
@@ -318,7 +318,7 @@ async function runScanner() {
     candidates.map(async (fiatB) => {
       const row = list.querySelector(`[data-fiat="${fiatB}"]`);
       try {
-        const methodParam = state.methodA ? `&methodA=${encodeURIComponent(state.methodA)}` : '';
+        const methodParam = state.methodA.length ? `&methodA=${encodeURIComponent(state.methodA.join(','))}` : '';
         const res = await fetch(`/api/corridor?balance=${state.balance}&fiatA=${anchor}&fiatB=${fiatB}&start=${anchor}${methodParam}`);
         const data = await res.json();
         if (!res.ok || data.cycle.error || data.cycle.profitPct == null) {
@@ -350,7 +350,7 @@ async function runScanner() {
     if (r.profitPct > -Infinity) {
       row.addEventListener('click', () => {
         state.fiatB = r.fiatB;
-        state.methodB = '';
+        state.methodB = [];
         state.start = 'a';
         $('#fiat-b-select').value = r.fiatB;
         document.querySelectorAll('#start-toggle .toggle-btn').forEach((b) => b.classList.toggle('active', b.dataset.start === 'a'));
@@ -375,29 +375,74 @@ async function loadFiats() {
   $('#fiat-b-select').value = state.fiatB;
 }
 
+/** Updates the "Carteira A/B" trigger button label to reflect how many wallets are selected. */
+function updateMethodTrigger(which) {
+  const selected = which === 'a' ? state.methodA : state.methodB;
+  const trigger = $(`#method-${which}-trigger`);
+  trigger.textContent = selected.length === 0 ? 'Qualquer' : selected.length === 1 ? selected[0] : `${selected.length} selecionadas`;
+  trigger.classList.toggle('has-selection', selected.length > 0);
+}
+
+function closeMethodPanel(which) {
+  $(`#method-${which}-panel`).hidden = true;
+}
+
+function toggleMethodPanel(which) {
+  const panel = $(`#method-${which}-panel`);
+  const wasOpen = !panel.hidden;
+  closeMethodPanel('a');
+  closeMethodPanel('b');
+  panel.hidden = wasOpen;
+}
+
 /**
- * Populates the "Carteira A/B" dropdown with the real payment methods live
- * right now for that fiat - so it can never offer a wallet that doesn't
- * actually exist there (e.g. Dukascopy only ever shows up under EUR).
+ * Populates the "Carteira A/B" checkbox panel with the real payment methods
+ * live right now for that fiat - so it can never offer a wallet that doesn't
+ * actually exist there (e.g. Dukascopy only ever shows up under EUR). Several
+ * can be checked at once: the corridor then accepts an ad using ANY of them.
  */
 async function loadMethods(which) {
   const fiat = which === 'a' ? state.fiatA : state.fiatB;
-  const select = which === 'a' ? $('#method-a-select') : $('#method-b-select');
-  const current = which === 'a' ? state.methodA : state.methodB;
+  const panel = $(`#method-${which}-panel`);
 
-  select.innerHTML = `<option value="">A carregar...</option>`;
+  panel.innerHTML = `<div class="ms-empty">A carregar...</div>`;
   try {
     const res = await fetch(`/api/methods?fiat=${fiat}`);
     const data = await res.json();
     const methods = data.methods || [];
-    select.innerHTML =
-      `<option value="">Qualquer</option>` + methods.map((m) => `<option value="${m}">${m}</option>`).join('');
-    select.value = methods.includes(current) ? current : '';
-    if (which === 'a') state.methodA = select.value;
-    else state.methodB = select.value;
+
+    // Drop any previously-checked method that no longer exists for this fiat
+    // (e.g. after switching moeda) instead of silently keeping a stale filter.
+    const selected = (which === 'a' ? state.methodA : state.methodB).filter((m) => methods.includes(m));
+    if (which === 'a') state.methodA = selected;
+    else state.methodB = selected;
+
+    panel.innerHTML = methods.length
+      ? methods
+          .map(
+            (m) =>
+              `<label class="ms-option"><input type="checkbox" value="${m}" ${selected.includes(m) ? 'checked' : ''}/> ${m}</label>`
+          )
+          .join('')
+      : `<div class="ms-empty">Sem métodos disponíveis</div>`;
+
+    panel.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const set = new Set(which === 'a' ? state.methodA : state.methodB);
+        if (cb.checked) set.add(cb.value);
+        else set.delete(cb.value);
+        if (which === 'a') state.methodA = [...set];
+        else state.methodB = [...set];
+        updateMethodTrigger(which);
+        saveState();
+        refresh();
+      });
+    });
+
+    updateMethodTrigger(which);
     saveState();
   } catch {
-    select.innerHTML = `<option value="">Qualquer</option>`;
+    panel.innerHTML = `<div class="ms-empty">Falha ao carregar</div>`;
   }
 }
 
@@ -420,7 +465,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('#fiat-a-select').addEventListener('change', (e) => {
     state.fiatA = e.target.value;
-    state.methodA = '';
+    state.methodA = [];
     saveState();
     updateTitles();
     loadMethods('a').then(refresh);
@@ -428,22 +473,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('#fiat-b-select').addEventListener('change', (e) => {
     state.fiatB = e.target.value;
-    state.methodB = '';
+    state.methodB = [];
     saveState();
     updateTitles();
     loadMethods('b').then(refresh);
   });
 
-  $('#method-a-select').addEventListener('change', (e) => {
-    state.methodA = e.target.value;
-    saveState();
-    refresh();
+  $('#method-a-trigger').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMethodPanel('a');
   });
 
-  $('#method-b-select').addEventListener('change', (e) => {
-    state.methodB = e.target.value;
-    saveState();
-    refresh();
+  $('#method-b-trigger').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMethodPanel('b');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.multiselect')) {
+      closeMethodPanel('a');
+      closeMethodPanel('b');
+    }
   });
 
   document.querySelectorAll('#start-toggle .toggle-btn').forEach((btn) => {
@@ -474,6 +524,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('#fiat-b-select').value = state.fiatB;
     saveState();
     updateTitles();
+    closeMethodPanel('a');
+    closeMethodPanel('b');
     Promise.all([loadMethods('a'), loadMethods('b')]).then(refresh);
   });
 

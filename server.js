@@ -65,18 +65,20 @@ function fitsSell(ad, qty) {
 
 /**
  * Best reputable, non-outlier ad for a side: cheapest if buying, priciest if
- * selling. `method`, if given, restricts to ads that actually offer it - e.g.
- * "só quero vender via Dukascopy". `fitCheck(ad)`, if given, is preferred:
- * among several exchanges the very best price is often a tiny, thin-liquidity
- * ad that can't actually absorb this trade's size - picking it anyway would
- * silently cap the leg's proceeds at whatever fraction the ad can fill,
- * producing a nonsense result. When nothing fits, this still falls back to
- * the best price overall (unchanged legacy behavior) so a genuinely
- * undersized trade still sees the closest real quote, flagged via
- * legInfo(...).fits, rather than a hard error.
+ * selling. `methods`, if given (one name or an array of them), restricts to
+ * ads offering ANY of them - e.g. "aceito M-Pesa ou e-Mola" should widen the
+ * pool of usable ads, not narrow it to a single wallet. `fitCheck(ad)`, if
+ * given, is preferred: among several exchanges the very best price is often a
+ * tiny, thin-liquidity ad that can't actually absorb this trade's size -
+ * picking it anyway would silently cap the leg's proceeds at whatever
+ * fraction the ad can fill, producing a nonsense result. When nothing fits,
+ * this still falls back to the best price overall (unchanged legacy
+ * behavior) so a genuinely undersized trade still sees the closest real
+ * quote, flagged via legInfo(...).fits, rather than a hard error.
  */
-function bestAd(ads, side, method, fitCheck) {
-  const candidates = method ? ads.filter((ad) => ad.payTypes.some((pt) => pt.name === method)) : ads;
+function bestAd(ads, side, methods, fitCheck) {
+  const wanted = Array.isArray(methods) ? methods : methods ? [methods] : [];
+  const candidates = wanted.length ? ads.filter((ad) => ad.payTypes.some((pt) => wanted.includes(pt.name))) : ads;
   const reputable = dropPriceOutliers(candidates.filter(isReputable), side);
   if (!reputable.length) return null;
   const sorted = side === 'buy' ? reputable.sort((a, b) => a.price - b.price) : reputable.sort((a, b) => b.price - a.price);
@@ -144,6 +146,12 @@ function getUsdtBook(fiat) {
  * comparable to the balance you started with - same currency, no reference
  * exchange rate needed, no approximation. Two ordered legs, one real number.
  */
+/** Formats a method filter (a name, an array of names, or none) for an error message. */
+function fmtMethod(method) {
+  const names = Array.isArray(method) ? method : method ? [method] : [];
+  return names.length ? ` via ${names.join(' ou ')}` : '';
+}
+
 function computeCycle({ startFiat, midFiat, balance, startBuyAds, midSellAds, midBuyAds, startSellAds, startMethod, midMethod }) {
   const base = { startFiat, midFiat, balance };
 
@@ -154,26 +162,26 @@ function computeCycle({ startFiat, midFiat, balance, startBuyAds, midSellAds, mi
   // each conversion can no longer be picked independently/concurrently.
   const buyA = bestAd(startBuyAds, 'buy', startMethod, (ad) => fitsBuy(ad, balance));
   if (!buyA) {
-    return { ...base, error: `Sem anúncios para comprar em ${startFiat}${startMethod ? ` via ${startMethod}` : ''} agora.` };
+    return { ...base, error: `Sem anúncios para comprar em ${startFiat}${fmtMethod(startMethod)} agora.` };
   }
   const qtyA = Math.min(balance / buyA.price, buyA.tradableQuantity || Infinity);
 
   const sellA = bestAd(midSellAds, 'sell', midMethod, (ad) => fitsSell(ad, qtyA));
   if (!sellA) {
-    return { ...base, error: `Sem anúncios para vender em ${midFiat}${midMethod ? ` via ${midMethod}` : ''} agora.` };
+    return { ...base, error: `Sem anúncios para vender em ${midFiat}${fmtMethod(midMethod)} agora.` };
   }
   const midAmount = qtyA * sellA.price; // now holding this much in midFiat
   const legA = { buy: legInfo(buyA, balance), sell: legInfo(sellA, midAmount), qty: qtyA, proceeds: midAmount };
 
   const buyB = bestAd(midBuyAds, 'buy', midMethod, (ad) => fitsBuy(ad, midAmount));
   if (!buyB) {
-    return { ...base, legA, error: `Sem anúncios para comprar em ${midFiat}${midMethod ? ` via ${midMethod}` : ''}, para fechar o ciclo.` };
+    return { ...base, legA, error: `Sem anúncios para comprar em ${midFiat}${fmtMethod(midMethod)}, para fechar o ciclo.` };
   }
   const qtyB = Math.min(midAmount / buyB.price, buyB.tradableQuantity || Infinity);
 
   const sellB = bestAd(startSellAds, 'sell', startMethod, (ad) => fitsSell(ad, qtyB));
   if (!sellB) {
-    return { ...base, legA, error: `Sem anúncios para vender em ${startFiat}${startMethod ? ` via ${startMethod}` : ''}, para fechar o ciclo.` };
+    return { ...base, legA, error: `Sem anúncios para vender em ${startFiat}${fmtMethod(startMethod)}, para fechar o ciclo.` };
   }
   const finalAmount = qtyB * sellB.price; // back in startFiat
 
@@ -230,9 +238,11 @@ app.get('/api/corridor', async (req, res) => {
 
     // Each fiat carries its own optional wallet/payment-method filter (e.g.
     // "Dukascopy" only ever applies to EUR-side legs) - map from A/B onto
-    // whichever of start/mid that fiat actually is this time.
-    const methodA = req.query.methodA || null;
-    const methodB = req.query.methodB || null;
+    // whichever of start/mid that fiat actually is this time. Comma-separated
+    // so several wallets can be accepted at once ("M-Pesa ou e-Mola").
+    const parseMethods = (raw) => (raw ? String(raw).split(',').map((s) => s.trim()).filter(Boolean) : []);
+    const methodA = parseMethods(req.query.methodA);
+    const methodB = parseMethods(req.query.methodB);
     const startMethod = start === fiatA ? methodA : methodB;
     const midMethod = start === fiatA ? methodB : methodA;
 

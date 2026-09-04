@@ -209,6 +209,67 @@ h1 .loop-icon {
   border-color: var(--accent);
 }
 
+/* --- Multi-select "Carteira": a button that opens a checkbox panel, so
+   several payment methods can be accepted at once (an OR filter). --- */
+
+.multiselect { position: relative; }
+
+.multiselect-trigger {
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-faint) 50%), linear-gradient(135deg, var(--text-faint) 50%, transparent 50%);
+  background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 30px;
+}
+
+.multiselect-trigger.has-selection {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.multiselect-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: var(--shadow-card);
+}
+
+.ms-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ms-option:hover { background: var(--surface); }
+
+.ms-option input { accent-color: var(--accent); width: 15px; height: 15px; flex: 0 0 auto; }
+
+.ms-empty {
+  padding: 10px 8px;
+  font-size: 0.8rem;
+  color: var(--text-faint);
+}
+
 .swap-btn {
   flex: 0 0 auto;
   width: 36px;

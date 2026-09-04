@@ -158,6 +158,13 @@ app.get('/api/corridor', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Ciclo P2P via USDT a correr em http://localhost:${PORT}`);
-});
+// Vercel imports this file as a serverless function (it calls the exported
+// app directly per-request) rather than running it as a long-lived process,
+// so `app.listen()` only makes sense for local dev / `npm start`.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Ciclo P2P via USDT a correr em http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;

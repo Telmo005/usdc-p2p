@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>P2P Watch</title>
+<title>Ciclo P2P via USDT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,147 +14,103 @@
 <div class="page">
 
   <header>
-    <h1>P2P Watch</h1>
-    <div class="header-right">
-      <button type="button" id="clear-selection-btn" class="clear-btn" hidden>Limpar seleção</button>
-      <select id="refresh-interval" class="refresh-interval" title="Intervalo de atualização">
-        <option value="5000">5s</option>
-        <option value="15000" selected>15s</option>
-        <option value="30000">30s</option>
-        <option value="60000">60s</option>
-      </select>
-      <button type="button" id="theme-toggle" class="icon-btn" title="Alternar tema claro/escuro">☾</button>
-      <div class="refresh-status" id="refresh-status">a carregar...</div>
-    </div>
+    <h1><span id="title-a">MZN</span> <span class="loop-icon">⟲</span> <span id="title-b">ZAR</span> <span class="via">via USDT</span></h1>
+    <div class="status" id="status">a carregar...</div>
   </header>
 
-  <section class="controls">
-    <div class="control-group">
-      <span class="control-label">Plataforma</span>
-      <div class="segmented" id="platform-picker"></div>
+  <div class="controls-row">
+    <div class="balance-row">
+      <label for="balance-input">Saldo para o ciclo</label>
+      <input type="number" id="balance-input" min="0" step="any" value="1000" />
     </div>
 
-    <div class="control-group">
-      <span class="control-label">Moeda</span>
-      <div class="control-row">
-        <input list="fiat-suggestions" id="fiat-input" value="MZN" spellcheck="false" />
-        <datalist id="fiat-suggestions"></datalist>
+    <div class="fiat-pair-row">
+      <div class="field-group">
+        <label for="fiat-a-select">Moeda A</label>
+        <select id="fiat-a-select" class="fiat-select"></select>
+      </div>
+      <div class="field-group">
+        <label for="method-a-select">Carteira A</label>
+        <select id="method-a-select" class="method-select"><option value="">Qualquer</option></select>
+      </div>
+      <div class="field-group">
+        <label for="fiat-b-select">Moeda B</label>
+        <select id="fiat-b-select" class="fiat-select"></select>
+      </div>
+      <div class="field-group">
+        <label for="method-b-select">Carteira B</label>
+        <select id="method-b-select" class="method-select"><option value="">Qualquer</option></select>
       </div>
     </div>
 
-    <div class="control-group">
-      <span class="control-label">Criptomoeda</span>
-      <div class="control-row">
-        <input list="asset-suggestions" id="asset-input" value="USDT" spellcheck="false" />
-        <datalist id="asset-suggestions"></datalist>
+    <div class="toggle-group">
+      <label>Começar em</label>
+      <div class="toggle" id="start-toggle">
+        <button type="button" class="toggle-btn active" data-start="a">A</button>
+        <button type="button" class="toggle-btn" data-start="b">B</button>
       </div>
     </div>
 
-    <div class="control-group">
-      <div class="section-head-row">
-        <span class="control-label">Tenho</span>
-        <span class="control-label" id="fee-toggle-label">Taxa %</span>
-      </div>
-      <div class="mode-toggle" id="amount-mode-toggle">
-        <button type="button" class="mode-btn active" data-mode="fiat">Dinheiro</button>
-        <button type="button" class="mode-btn" data-mode="crypto">Cripto</button>
-      </div>
-      <div class="control-row amount-row">
-        <input type="number" id="amount-input" min="0" step="any" value="1000" />
-        <span class="amount-unit" id="amount-unit">MZN</span>
-        <input type="number" id="fee-input" class="fee-input" min="0" step="any" value="0" title="Taxa % a descontar do valor final (banco, carteira, levantamento)" />
+    <div class="toggle-group">
+      <label>Mostrar</label>
+      <div class="toggle" id="mode-toggle">
+        <button type="button" class="toggle-btn active" data-mode="full">Ciclo completo</button>
+        <button type="button" class="toggle-btn" data-mode="partial">Só ida</button>
       </div>
     </div>
-  </section>
+  </div>
 
-  <section class="hero-card" id="hero-card">
-    <div class="hero-kicker" id="hero-kicker">A calcular...</div>
-    <div class="hero-headline" id="hero-headline"></div>
-    <div class="hero-number-row">
-      <span class="hero-number" id="hero-number">—</span>
-      <span class="hero-number-label" id="hero-number-label"></span>
-    </div>
-    <div class="hero-total-row" id="hero-total-row"></div>
-    <div class="hero-legs" id="hero-legs"></div>
-    <div class="hero-detail" id="hero-detail"></div>
-  </section>
+  <section class="cycle-panel" id="cycle-panel">
 
-  <section class="card compare-section">
-    <div class="section-head-row">
-      <span class="control-label">Comparação rápida entre plataformas</span>
-      <span class="hint">preço sem filtro de método · clica para trocar</span>
-    </div>
-    <div class="compare-strip" id="compare-strip">
-      <span class="muted">a carregar...</span>
-    </div>
-  </section>
+    <div class="cycle-diagram" id="cycle-diagram">
+      <svg class="cycle-svg" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#7d818c" />
+          </marker>
+        </defs>
+        <path class="arc" id="arc-ne" d="M 200,34 A 166,166 0 0,1 366,200" marker-end="url(#arrowhead)" />
+        <path class="arc" id="arc-es" d="M 366,200 A 166,166 0 0,1 200,366" marker-end="url(#arrowhead)" />
+        <path class="arc" id="arc-sw" d="M 200,366 A 166,166 0 0,1 34,200" marker-end="url(#arrowhead)" />
+        <path class="arc" id="arc-wn" d="M 34,200 A 166,166 0 0,1 200,34" marker-end="url(#arrowhead)" />
+      </svg>
 
-  <section class="card best-asset-section">
-    <div class="section-head-row">
-      <span class="control-label">Melhor cripto para os teus métodos favoritos ★</span>
-      <button type="button" id="best-asset-scan-btn" class="mode-btn">Escanear</button>
-    </div>
-    <p class="hint" id="best-asset-hint">Marca métodos com ★ na lista abaixo para ativar isto.</p>
-    <div class="best-asset-list" id="best-asset-list"></div>
-  </section>
+      <div class="cnode pos-n" id="node-n" data-currency="a"></div>
+      <div class="cnode pos-e" id="node-e" data-currency="usdt"></div>
+      <div class="cnode pos-s" id="node-s" data-currency="b"></div>
+      <div class="cnode pos-w" id="node-w" data-currency="usdt"></div>
 
-  <section class="methods-section">
-    <div class="section-head-row">
-      <span class="control-label">Métodos de pagamento nesta plataforma (A–Z, todas as moedas)</span>
-      <span class="hint" id="methods-depth-note"></span>
+      <div class="ccaption pos-ne" id="cap-ne"></div>
+      <div class="ccaption pos-se" id="cap-se"></div>
+      <div class="ccaption pos-sw" id="cap-sw"></div>
+      <div class="ccaption pos-nw" id="cap-nw"></div>
     </div>
-    <p class="hint">Clica no nome para filtrar · clica na ★ para marcar como favorito (fica sempre selecionado) · clica numa moeda para saltar logo para ela</p>
-    <div class="method-search-row">
-      <input type="text" id="method-search" class="method-search" placeholder="Procurar método (ex: Wise, M-Pesa, Dukascopy)..." spellcheck="false" />
-      <button type="button" id="fiat-only-toggle" class="mode-btn" title="Mostrar só métodos com anúncios na moeda atual">Só em <span id="fiat-only-code"></span></button>
-    </div>
-    <div class="method-grid-wrap">
-      <div class="method-grid" id="methods-picker">
-        <span class="muted">a carregar...</span>
+
+    <div class="result-panel" id="result-panel">
+      <div class="balance-compare">
+        <div class="balance-box">
+          <div class="balance-box-label">Saldo inicial</div>
+          <div class="balance-box-value" id="balance-start">—</div>
+        </div>
+        <div class="balance-arrow">→</div>
+        <div class="balance-box" id="balance-end-box">
+          <div class="balance-box-label">Saldo final</div>
+          <div class="balance-box-value" id="balance-end">—</div>
+        </div>
       </div>
+      <div class="profit-line" id="profit-line"></div>
+      <div class="rate-line" id="rate-line"></div>
     </div>
+
   </section>
 
-  <section class="summary" id="summary">
-    <div class="stat">
-      <span class="stat-label">Melhor compra</span>
-      <span class="stat-value" id="stat-buy">—</span>
+  <section class="scanner-panel">
+    <div class="scanner-head">
+      <h2>🔍 Explorar outras moedas</h2>
+      <button type="button" id="scan-btn" class="scan-btn">Procurar melhor par para <span id="scan-anchor">MZN</span></button>
     </div>
-    <div class="stat">
-      <span class="stat-label">Melhor venda</span>
-      <span class="stat-value" id="stat-sell">—</span>
-    </div>
-    <div class="stat">
-      <span class="stat-label">Spread</span>
-      <span class="stat-value" id="stat-spread">—</span>
-    </div>
-    <div class="stat">
-      <span class="stat-label" id="gain-label">Ganho estimado</span>
-      <span class="stat-value" id="stat-gain">—</span>
-      <span class="stat-note" id="gain-note"></span>
-    </div>
-  </section>
-
-  <section class="card alerts-bar">
-    <button type="button" id="alerts-toggle" class="mode-btn">🔔 Ativar alertas</button>
-    <span class="hint">avisar quando o spread for pelo menos</span>
-    <input type="number" id="alerts-threshold" class="alerts-threshold" min="0" step="any" value="2" />
-    <span class="hint">%</span>
-    <span class="hint" id="alerts-status"></span>
-  </section>
-
-  <p class="transparency-note" id="transparency-note"></p>
-  <div id="redirect-hint"></div>
-
-  <section class="results">
-    <div class="results-col">
-      <h2>Comprar <span class="hint">anúncios de venda, mais barato primeiro</span></h2>
-      <div class="ads-list" id="buy-list"></div>
-    </div>
-    <div class="results-col">
-      <h2>Vender <span class="hint">anúncios de compra, mais caro primeiro</span></h2>
-      <div class="ads-list" id="sell-list"></div>
-    </div>
+    <p class="hint">Testa a moeda A de cada vez contra várias moedas B, e ordena pelo lucro do ciclo completo.</p>
+    <div class="scan-list" id="scan-list"></div>
   </section>
 
 </div>

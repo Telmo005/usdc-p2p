@@ -13,6 +13,8 @@ app.use(compression());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PLATFORM_NAMES = { binance: 'Binance', bybit: 'Bybit', okx: 'OKX' };
+const PLATFORM_CLIENTS = { binance, bybit, okx };
+const ALL_PLATFORM_IDS = Object.keys(PLATFORM_CLIENTS);
 
 // Ads from advertisers with a poor track record are excluded - no point
 // recommending a trade that's likely to stall or get cancelled.
@@ -103,40 +105,43 @@ function legInfo(ad, amountInThisLeg) {
 
 const BOOK_CACHE_TTL_MS = 10_000;
 
-/**
- * USDT book for one fiat, merged across every supported exchange (currently
- * Binance, Bybit, OKX), cached + single-flight so a 20s auto-refresh never
- * duplicates a request. One exchange failing (rate limit, timeout, an
- * unsupported fiat on that platform) never breaks the whole book - it's
- * simply excluded from that fetch, since Binance alone already served this
- * app reliably before the others were added.
- */
-function getUsdtBook(fiat) {
+/** One exchange's USDT book for one fiat, cached + single-flight per platform - so filtering to a subset of exchanges never throws away another request's cached data for the rest. */
+function getPlatformBook(platformId, fiat) {
   return cache.getOrFetch(
-    `book:multi:USDT:${fiat}`,
-    async () => {
-      const results = await Promise.allSettled([
-        binance.fetchBook({ asset: 'USDT', fiat, rows: 20 }),
-        bybit.fetchBook({ asset: 'USDT', fiat, rows: 20 }),
-        okx.fetchBook({ asset: 'USDT', fiat }),
-      ]);
-
-      const merged = { buy: [], sell: [] };
-      for (const r of results) {
-        if (r.status !== 'fulfilled') continue;
-        merged.buy.push(...r.value.buy);
-        merged.sell.push(...r.value.sell);
-      }
-
-      if (!merged.buy.length && !merged.sell.length) {
-        const firstError = results.find((r) => r.status === 'rejected');
-        throw firstError ? firstError.reason : new Error('Nenhuma exchange devolveu anúncios.');
-      }
-
-      return merged;
-    },
+    `book:${platformId}:USDT:${fiat}`,
+    () => PLATFORM_CLIENTS[platformId].fetchBook({ asset: 'USDT', fiat, rows: 20 }),
     BOOK_CACHE_TTL_MS
   );
+}
+
+/**
+ * USDT book for one fiat, merged across whichever exchanges are wanted
+ * (`exchanges`: an array of platform ids, or empty/omitted for all of them -
+ * never zero, an unrecognized or empty list still falls back to every
+ * platform). One exchange failing (rate limit, timeout, an unsupported fiat
+ * on that platform) never breaks the whole book - it's simply excluded from
+ * that fetch, since Binance alone already served this app reliably before
+ * the others were added.
+ */
+async function getUsdtBook(fiat, exchanges) {
+  const wanted = (exchanges || []).filter((id) => ALL_PLATFORM_IDS.includes(id));
+  const ids = wanted.length ? wanted : ALL_PLATFORM_IDS;
+
+  const results = await Promise.allSettled(ids.map((id) => getPlatformBook(id, fiat)));
+
+  const merged = { buy: [], sell: [] };
+  for (const r of results) {
+    if (r.status !== 'fulfilled') continue;
+    merged.buy.push(...r.value.buy);
+    merged.sell.push(...r.value.sell);
+  }
+
+  if (!merged.buy.length && !merged.sell.length) {
+    const firstError = results.find((r) => r.status === 'rejected');
+    throw firstError ? firstError.reason : new Error('Nenhuma exchange devolveu anúncios.');
+  }
+
+  return merged;
 }
 
 /**
@@ -197,8 +202,18 @@ const DEFAULT_FIATS = ['MZN', 'ZAR', 'USD', 'EUR', 'GBP', 'KES', 'NGN', 'BRL'];
 
 app.get('/api/defaults', (req, res) => {
   res.set('Cache-Control', 'public, max-age=300');
-  res.json({ fiats: DEFAULT_FIATS });
+  res.json({ fiats: DEFAULT_FIATS, exchanges: ALL_PLATFORM_IDS.map((id) => ({ id, name: PLATFORM_NAMES[id] })) });
 });
+
+/** Comma-separated list of platform ids from a query param, dropping anything unrecognized - never lets a typo silently restrict to zero exchanges. */
+function parseExchanges(req) {
+  const raw = req.query.exchanges;
+  if (!raw) return [];
+  return String(raw)
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((id) => ALL_PLATFORM_IDS.includes(id));
+}
 
 // Real payment methods seen right now in this fiat's live ads - never a
 // fixed/guessed list, so the dropdown can never offer a wallet/method that
@@ -208,7 +223,7 @@ app.get('/api/methods', async (req, res) => {
     const fiat = String(req.query.fiat || '').toUpperCase();
     if (!fiat) return res.status(400).json({ error: 'Indica uma moeda.' });
 
-    const book = await getUsdtBook(fiat);
+    const book = await getUsdtBook(fiat, parseExchanges(req));
     const names = new Set();
     [...book.buy, ...book.sell].forEach((ad) => ad.payTypes.forEach((pt) => pt.name && names.add(pt.name)));
 
@@ -246,7 +261,8 @@ app.get('/api/corridor', async (req, res) => {
     const startMethod = start === fiatA ? methodA : methodB;
     const midMethod = start === fiatA ? methodB : methodA;
 
-    const [bookA, bookB] = await Promise.all([getUsdtBook(fiatA), getUsdtBook(fiatB)]);
+    const exchanges = parseExchanges(req);
+    const [bookA, bookB] = await Promise.all([getUsdtBook(fiatA, exchanges), getUsdtBook(fiatB, exchanges)]);
     const startBook = start === fiatA ? bookA : bookB;
     const midBook = start === fiatA ? bookB : bookA;
 

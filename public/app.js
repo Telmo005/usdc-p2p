@@ -17,6 +17,7 @@ const $ = (sel) => document.querySelector(sel);
 let inFlight = false;
 let refreshTimer = null;
 let availableFiats = [];
+let availableExchanges = []; // [{id, name}], loaded from /api/defaults
 
 const state = loadState();
 
@@ -29,11 +30,13 @@ function loadState() {
       fiatB: saved.fiatB || 'ZAR',
       methodA: Array.isArray(saved.methodA) ? saved.methodA : [],
       methodB: Array.isArray(saved.methodB) ? saved.methodB : [],
+      // Empty means "every exchange" - same convention as methodA/B.
+      exchanges: Array.isArray(saved.exchanges) ? saved.exchanges : [],
       start: saved.start === 'b' ? 'b' : 'a',
       mode: saved.mode === 'partial' ? 'partial' : 'full',
     };
   } catch {
-    return { balance: 1000, fiatA: 'MZN', fiatB: 'ZAR', methodA: [], methodB: [], start: 'a', mode: 'full' };
+    return { balance: 1000, fiatA: 'MZN', fiatB: 'ZAR', methodA: [], methodB: [], exchanges: [], start: 'a', mode: 'full' };
   }
 }
 
@@ -233,6 +236,7 @@ function currentUrl() {
   const params = new URLSearchParams({ balance: state.balance, fiatA: state.fiatA, fiatB: state.fiatB, start: startFiat });
   if (state.methodA.length) params.set('methodA', state.methodA.join(','));
   if (state.methodB.length) params.set('methodB', state.methodB.join(','));
+  if (state.exchanges.length) params.set('exchanges', state.exchanges.join(','));
   return `/api/corridor?${params}`;
 }
 
@@ -319,7 +323,8 @@ async function runScanner() {
       const row = list.querySelector(`[data-fiat="${fiatB}"]`);
       try {
         const methodParam = state.methodA.length ? `&methodA=${encodeURIComponent(state.methodA.join(','))}` : '';
-        const res = await fetch(`/api/corridor?balance=${state.balance}&fiatA=${anchor}&fiatB=${fiatB}&start=${anchor}${methodParam}`);
+        const exchangeParam = state.exchanges.length ? `&exchanges=${encodeURIComponent(state.exchanges.join(','))}` : '';
+        const res = await fetch(`/api/corridor?balance=${state.balance}&fiatA=${anchor}&fiatB=${fiatB}&start=${anchor}${methodParam}${exchangeParam}`);
         const data = await res.json();
         if (!res.ok || data.cycle.error || data.cycle.profitPct == null) {
           row.querySelector('.scan-status').textContent = data.cycle?.error ? 'sem anúncios suficientes' : 'sem dados';
@@ -368,6 +373,7 @@ async function loadFiats() {
   const res = await fetch('/api/defaults');
   const data = await res.json();
   availableFiats = data.fiats;
+  availableExchanges = data.exchanges || [];
   const options = availableFiats.map((f) => `<option value="${f}">${f}</option>`).join('');
   $('#fiat-a-select').innerHTML = options;
   $('#fiat-b-select').innerHTML = options;
@@ -383,16 +389,60 @@ function updateMethodTrigger(which) {
   trigger.classList.toggle('has-selection', selected.length > 0);
 }
 
-function closeMethodPanel(which) {
-  $(`#method-${which}-panel`).hidden = true;
+/** Any open "Carteira A/B" or "Exchanges" panel - closing all of them before opening one keeps at most one on screen at a time. */
+function closeAllMultiselects() {
+  document.querySelectorAll('.multiselect-panel').forEach((p) => (p.hidden = true));
 }
 
-function toggleMethodPanel(which) {
-  const panel = $(`#method-${which}-panel`);
+function toggleMultiselect(panelId) {
+  const panel = $(`#${panelId}`);
   const wasOpen = !panel.hidden;
-  closeMethodPanel('a');
-  closeMethodPanel('b');
+  closeAllMultiselects();
   panel.hidden = wasOpen;
+}
+
+/** Updates the "Exchanges" trigger button label to reflect the current selection ([] means every exchange). */
+function updateExchangeTrigger() {
+  const trigger = $('#exchange-trigger');
+  const n = state.exchanges.length;
+  const name = (id) => availableExchanges.find((e) => e.id === id)?.name || id;
+  trigger.textContent = n === 0 ? 'Todas' : n === 1 ? name(state.exchanges[0]) : `${n} selecionadas`;
+  trigger.classList.toggle('has-selection', n > 0);
+}
+
+/** Renders the "Exchanges" checkbox panel from /api/defaults' exchange list - never hardcoded, so a future platform just shows up. */
+function renderExchangeOptions() {
+  const panel = $('#exchange-panel');
+  if (!availableExchanges.length) {
+    panel.innerHTML = `<div class="ms-empty">Sem exchanges</div>`;
+    return;
+  }
+
+  panel.innerHTML = availableExchanges
+    .map(
+      ({ id, name }) =>
+        `<label class="ms-option"><input type="checkbox" value="${id}" ${state.exchanges.length === 0 || state.exchanges.includes(id) ? 'checked' : ''}/> ${name}</label>`
+    )
+    .join('');
+
+  panel.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const checked = [...panel.querySelectorAll('input[type="checkbox"]:checked')].map((i) => i.value);
+      if (checked.length === 0) {
+        // Never allow zero exchanges - that's not a narrower filter, it's no data at all.
+        cb.checked = true;
+        return;
+      }
+      state.exchanges = checked.length === availableExchanges.length ? [] : checked;
+      updateExchangeTrigger();
+      saveState();
+      loadMethods('a');
+      loadMethods('b');
+      refresh();
+    });
+  });
+
+  updateExchangeTrigger();
 }
 
 /**
@@ -453,6 +503,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadFiats();
   updateTitles();
+  renderExchangeOptions();
   loadMethods('a').then(refresh);
   loadMethods('b');
   scheduleAutoRefresh();
@@ -481,19 +532,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('#method-a-trigger').addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleMethodPanel('a');
+    toggleMultiselect('method-a-panel');
   });
 
   $('#method-b-trigger').addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleMethodPanel('b');
+    toggleMultiselect('method-b-panel');
+  });
+
+  $('#exchange-trigger').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMultiselect('exchange-panel');
   });
 
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('.multiselect')) {
-      closeMethodPanel('a');
-      closeMethodPanel('b');
-    }
+    if (!e.target.closest('.multiselect')) closeAllMultiselects();
   });
 
   document.querySelectorAll('#start-toggle .toggle-btn').forEach((btn) => {
@@ -524,8 +577,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('#fiat-b-select').value = state.fiatB;
     saveState();
     updateTitles();
-    closeMethodPanel('a');
-    closeMethodPanel('b');
+    closeAllMultiselects();
     Promise.all([loadMethods('a'), loadMethods('b')]).then(refresh);
   });
 

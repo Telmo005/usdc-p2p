@@ -113,9 +113,11 @@ h1 .loop-icon {
 .balance-card { flex: 1 1 260px; }
 .pair-card { flex: 2 1 420px; flex-direction: row; align-items: flex-end; position: relative; gap: 14px; }
 .toggle-card { flex: 0 0 auto; justify-content: flex-end; }
+.exchange-card { flex: 0 1 170px; justify-content: flex-end; }
 
 .balance-card label,
 .toggle-card > label,
+.exchange-card > label,
 .field-group label {
   font-size: 0.68rem;
   color: var(--text-faint);
@@ -215,6 +217,20 @@ h1 .loop-icon {
 .multiselect { position: relative; }
 
 .multiselect-trigger {
+  /* A <button> matches none of the `.field-group select` base styling
+     (background/border/color/padding - that rule is scoped to the <select>
+     tag), so the look has to be fully restated here rather than assumed. */
+  display: block;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 11px 14px;
+  font-size: 0.95rem;
+  font-family: var(--mono);
+  font-weight: 600;
+  width: 100%;
+  transition: border-color 0.15s ease;
   cursor: pointer;
   text-align: left;
   overflow: hidden;
@@ -226,6 +242,11 @@ h1 .loop-icon {
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
   padding-right: 30px;
+}
+
+.multiselect-trigger:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .multiselect-trigger.has-selection {

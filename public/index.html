@@ -14,36 +14,52 @@
 <div class="page">
 
   <header>
-    <h1><span id="title-a">MZN</span> <span class="loop-icon">⟲</span> <span id="title-b">ZAR</span> <span class="via">via USDT</span></h1>
-    <div class="status" id="status">a carregar...</div>
+    <div class="header-title">
+      <h1><span id="title-a">MZN</span> <span class="loop-icon">⟲</span> <span id="title-b">ZAR</span></h1>
+      <p class="header-sub">Arbitragem P2P via USDT em tempo real</p>
+    </div>
   </header>
 
-  <div class="controls-row">
-    <div class="balance-row">
-      <label for="balance-input">Saldo para o ciclo</label>
-      <input type="number" id="balance-input" min="0" step="any" value="1000" />
-    </div>
-
-    <div class="fiat-pair-row">
-      <div class="field-group">
-        <label for="fiat-a-select">Moeda A</label>
-        <select id="fiat-a-select" class="fiat-select"></select>
-      </div>
-      <div class="field-group">
-        <label for="method-a-select">Carteira A</label>
-        <select id="method-a-select" class="method-select"><option value="">Qualquer</option></select>
-      </div>
-      <div class="field-group">
-        <label for="fiat-b-select">Moeda B</label>
-        <select id="fiat-b-select" class="fiat-select"></select>
-      </div>
-      <div class="field-group">
-        <label for="method-b-select">Carteira B</label>
-        <select id="method-b-select" class="method-select"><option value="">Qualquer</option></select>
+  <div class="control-cards">
+    <div class="control-card balance-card">
+      <label for="balance-input">Valor inicial que tem</label>
+      <div class="balance-input-row">
+        <input type="number" id="balance-input" min="0" step="any" value="1000" />
+        <div class="fiat-badge" id="fiat-a-badge">
+          <span class="fiat-flag" id="fiat-a-flag">🏳️</span>
+          <span class="fiat-badge-text">
+            <span class="fiat-badge-code" id="fiat-a-code">MZN</span>
+            <small class="fiat-badge-name" id="fiat-a-name">Metical</small>
+          </span>
+        </div>
       </div>
     </div>
 
-    <div class="toggle-group">
+    <div class="control-card pair-card">
+      <div class="pair-fields">
+        <div class="field-group">
+          <label for="fiat-a-select">Moeda A</label>
+          <select id="fiat-a-select" class="fiat-select"></select>
+        </div>
+        <div class="field-group">
+          <label for="method-a-select">Carteira A</label>
+          <select id="method-a-select" class="method-select"><option value="">Qualquer</option></select>
+        </div>
+      </div>
+      <button type="button" class="swap-btn" id="swap-btn" title="Trocar moedas">⇄</button>
+      <div class="pair-fields">
+        <div class="field-group">
+          <label for="fiat-b-select">Moeda B</label>
+          <select id="fiat-b-select" class="fiat-select"></select>
+        </div>
+        <div class="field-group">
+          <label for="method-b-select">Carteira B</label>
+          <select id="method-b-select" class="method-select"><option value="">Qualquer</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="control-card toggle-card">
       <label>Começar em</label>
       <div class="toggle" id="start-toggle">
         <button type="button" class="toggle-btn active" data-start="a">A</button>
@@ -51,7 +67,7 @@
       </div>
     </div>
 
-    <div class="toggle-group">
+    <div class="control-card toggle-card">
       <label>Mostrar</label>
       <div class="toggle" id="mode-toggle">
         <button type="button" class="toggle-btn active" data-mode="full">Ciclo completo</button>
@@ -62,45 +78,101 @@
 
   <section class="cycle-panel" id="cycle-panel">
 
-    <div class="cycle-diagram" id="cycle-diagram">
-      <svg class="cycle-svg" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet">
-        <defs>
-          <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#7d818c" />
-          </marker>
-        </defs>
-        <path class="arc" id="arc-ne" d="M 200,34 A 166,166 0 0,1 366,200" marker-end="url(#arrowhead)" />
-        <path class="arc" id="arc-es" d="M 366,200 A 166,166 0 0,1 200,366" marker-end="url(#arrowhead)" />
-        <path class="arc" id="arc-sw" d="M 200,366 A 166,166 0 0,1 34,200" marker-end="url(#arrowhead)" />
-        <path class="arc" id="arc-wn" d="M 34,200 A 166,166 0 0,1 200,34" marker-end="url(#arrowhead)" />
-      </svg>
-
-      <div class="cnode pos-n" id="node-n" data-currency="a"></div>
-      <div class="cnode pos-e" id="node-e" data-currency="usdt"></div>
-      <div class="cnode pos-s" id="node-s" data-currency="b"></div>
-      <div class="cnode pos-w" id="node-w" data-currency="usdt"></div>
-
-      <div class="ccaption pos-ne" id="cap-ne"></div>
-      <div class="ccaption pos-se" id="cap-se"></div>
-      <div class="ccaption pos-sw" id="cap-sw"></div>
-      <div class="ccaption pos-nw" id="cap-nw"></div>
-    </div>
-
-    <div class="result-panel" id="result-panel">
-      <div class="balance-compare">
-        <div class="balance-box">
-          <div class="balance-box-label">Saldo inicial</div>
-          <div class="balance-box-value" id="balance-start">—</div>
-        </div>
-        <div class="balance-arrow">→</div>
-        <div class="balance-box" id="balance-end-box">
-          <div class="balance-box-label">Saldo final</div>
-          <div class="balance-box-value" id="balance-end">—</div>
+    <div class="cycle-panel-head">
+      <div>
+        <h2 class="cycle-title">Ciclo completo</h2>
+        <p class="cycle-subtitle" id="cycle-subtitle">Veja o ciclo completo de arbitragem entre MZN e ZAR</p>
+      </div>
+      <div class="updated-badge">
+        <span class="updated-icon">🕐</span>
+        <div>
+          <div class="updated-label" id="status">a carregar...</div>
+          <div class="updated-time" id="updated-time"></div>
         </div>
       </div>
-      <div class="profit-line" id="profit-line"></div>
-      <div class="rate-line" id="rate-line"></div>
     </div>
+
+    <div class="cycle-body">
+      <div class="cycle-diagram" id="cycle-diagram">
+        <svg class="cycle-svg" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#7d818c" />
+            </marker>
+          </defs>
+          <path class="arc" id="arc-ne" d="M 200,34 A 166,166 0 0,1 366,200" marker-end="url(#arrowhead)" />
+          <path class="arc" id="arc-es" d="M 366,200 A 166,166 0 0,1 200,366" marker-end="url(#arrowhead)" />
+          <path class="arc" id="arc-sw" d="M 200,366 A 166,166 0 0,1 34,200" marker-end="url(#arrowhead)" />
+          <path class="arc" id="arc-wn" d="M 34,200 A 166,166 0 0,1 200,34" marker-end="url(#arrowhead)" />
+        </svg>
+
+        <div class="cnode pos-n" id="node-n" data-currency="a"></div>
+        <div class="cnode pos-e" id="node-e" data-currency="usdt"></div>
+        <div class="cnode pos-s" id="node-s" data-currency="b"></div>
+        <div class="cnode pos-w" id="node-w" data-currency="usdt"></div>
+
+        <div class="ccaption pos-ne" id="cap-ne"></div>
+        <div class="ccaption pos-se" id="cap-se"></div>
+        <div class="ccaption pos-sw" id="cap-sw"></div>
+        <div class="ccaption pos-nw" id="cap-nw"></div>
+
+        <div class="cycle-center-card" id="cycle-center-card">
+          <div class="center-card-label" id="center-card-label">Lucro estimado</div>
+          <div class="center-card-value" id="center-profit">—</div>
+          <div class="center-card-usd" id="center-profit-usd"></div>
+        </div>
+      </div>
+
+      <aside class="cycle-sidebar">
+        <div class="sidebar-note">
+          <span class="sidebar-icon">🛡️</span>
+          <div>
+            <div class="sidebar-title">Fonte confiável</div>
+            <div class="sidebar-text">Dados de taxas obtidos de plataformas P2P confiáveis em tempo real.</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="stat-row" id="stat-row">
+      <div class="stat-tile">
+        <span class="stat-icon">👛</span>
+        <div class="stat-body">
+          <div class="stat-label">Investimento inicial</div>
+          <div class="stat-value" id="stat-investment">—</div>
+        </div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-icon">📈</span>
+        <div class="stat-body">
+          <div class="stat-label">Lucro estimado</div>
+          <div class="stat-value" id="stat-profit">—</div>
+        </div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-icon">◔</span>
+        <div class="stat-body">
+          <div class="stat-label">Lucro percentual</div>
+          <div class="stat-value" id="stat-profit-pct">—</div>
+        </div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-icon">＄</span>
+        <div class="stat-body">
+          <div class="stat-label">Lucro em USD</div>
+          <div class="stat-value" id="stat-profit-usd">—</div>
+        </div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-icon">⏳</span>
+        <div class="stat-body">
+          <div class="stat-label">Tempo do ciclo</div>
+          <div class="stat-value">~2-5 min</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-panel" id="result-panel"></div>
 
   </section>
 

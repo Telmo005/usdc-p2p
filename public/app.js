@@ -1,6 +1,17 @@
 const REFRESH_MS = 20_000;
 const STORAGE_KEY = 'p2p-corridor-state-v2';
 
+const FIAT_INFO = {
+  MZN: { flag: '🇲🇿', name: 'Metical' },
+  ZAR: { flag: '🇿🇦', name: 'Rand' },
+  USD: { flag: '🇺🇸', name: 'Dólar Americano' },
+  EUR: { flag: '🇪🇺', name: 'Euro' },
+  GBP: { flag: '🇬🇧', name: 'Libra Esterlina' },
+  KES: { flag: '🇰🇪', name: 'Xelim Queniano' },
+  NGN: { flag: '🇳🇬', name: 'Naira' },
+  BRL: { flag: '🇧🇷', name: 'Real Brasileiro' },
+};
+
 const $ = (sel) => document.querySelector(sel);
 
 let inFlight = false;
@@ -46,10 +57,11 @@ function hideNode(el) {
   el.hidden = true;
 }
 
-function setCaption(el, kind, leg) {
+function setCaption(el, kind, leg, num) {
   el.hidden = false;
   const warning = leg.fits === false ? `<div class="ccaption-warning">fora dos limites (${fmt(leg.minAmount, 0)}–${fmt(leg.maxAmount, 0)})</div>` : '';
   el.innerHTML = `
+    <span class="badge-num">${num}</span>
     <div class="ccaption-kind">${kind === 'buy' ? 'Taxa de compra' : 'Taxa de venda'}</div>
     <div class="ccaption-price">${fmt(leg.price, 4)}</div>
     <div class="ccaption-method">${leg.method ?? '-'} <span class="ccaption-who">· ${leg.advertiser ?? '-'}</span></div>
@@ -78,6 +90,8 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
     diagram.classList.add('has-error');
     ['#node-n', '#node-e', '#node-s', '#node-w'].forEach((sel) => hideNode($(sel)));
     ['#cap-ne', '#cap-se', '#cap-sw', '#cap-nw'].forEach((sel) => hideCaption($(sel)));
+    $('#cycle-center-card').hidden = true;
+    $('#stat-row').hidden = true;
     resultPanel.innerHTML = `<p class="muted">⚠️ ${data.error}</p>`;
     return;
   }
@@ -108,8 +122,8 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
 
   if (showEast) {
     setNode($('#node-e'), usdtFromA, 'USDT', start === 'a' ? 'Compraste' : 'Recompraste', false);
-    setCaption($('#cap-ne'), 'buy', legAtoUsdt.buy);
-    setCaption($('#cap-se'), 'sell', legUsdtToB.sell);
+    setCaption($('#cap-ne'), 'buy', legAtoUsdt.buy, 1);
+    setCaption($('#cap-se'), 'sell', legUsdtToB.sell, 2);
   } else {
     hideNode($('#node-e'));
     hideCaption($('#cap-ne'));
@@ -118,8 +132,8 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
 
   if (showWest) {
     setNode($('#node-w'), usdtFromB, 'USDT', start === 'b' ? 'Compraste' : 'Recompraste', false);
-    setCaption($('#cap-sw'), 'buy', legBtoUsdt.buy);
-    setCaption($('#cap-nw'), 'sell', legUsdtToA.sell);
+    setCaption($('#cap-sw'), 'buy', legBtoUsdt.buy, 3);
+    setCaption($('#cap-nw'), 'sell', legUsdtToA.sell, 4);
   } else {
     hideNode($('#node-w'));
     hideCaption($('#cap-sw'));
@@ -143,33 +157,49 @@ function renderCycle(data, start, mode, fiatA, fiatB) {
 function renderResultPanel(data, start, mode, fiatA, fiatB) {
   const startUnit = start === 'a' ? fiatA : fiatB;
   const midUnit = start === 'a' ? fiatB : fiatA;
-
-  $('#balance-start').textContent = `${fmt(data.balance)} ${startUnit}`;
-  $('#balance-end').className = 'balance-box-value';
+  const resultPanel = $('#result-panel');
 
   if (mode === 'partial' || !data.legB) {
+    $('#cycle-center-card').hidden = true;
+    $('#stat-row').hidden = true;
+
     const endAmount = data.legA.proceeds;
-    $('#balance-end-box').querySelector('.balance-box-label').textContent = 'Ficas com';
-    $('#balance-end').textContent = `${fmt(endAmount)} ${midUnit}`;
-    $('#profit-line').innerHTML = `<span class="muted">Conversão só de ida - não há "lucro" para comparar, são moedas diferentes.</span>`;
     const impliedRate = endAmount / data.balance;
-    $('#rate-line').innerHTML = `Taxa de compra efetiva: <b>1 ${startUnit} ≈ ${fmt(impliedRate, 4)} ${midUnit}</b> &nbsp;·&nbsp; Taxa de venda efetiva: <b>1 ${midUnit} ≈ ${fmt(1 / impliedRate, 4)} ${startUnit}</b>`;
+    resultPanel.innerHTML = `
+      <p class="muted">Conversão só de ida: ${fmt(data.balance)} ${startUnit} → <b>${fmt(endAmount)} ${midUnit}</b>. Não há "lucro" para comparar, são moedas diferentes.</p>
+      <p class="rate-line">Taxa de compra efetiva: <b>1 ${startUnit} ≈ ${fmt(impliedRate, 4)} ${midUnit}</b> &nbsp;·&nbsp; Taxa de venda efetiva: <b>1 ${midUnit} ≈ ${fmt(1 / impliedRate, 4)} ${startUnit}</b></p>`;
     return;
   }
 
-  $('#balance-end-box').querySelector('.balance-box-label').textContent = 'Saldo final';
-  $('#balance-end').textContent = `${fmt(data.finalAmount)} ${startUnit}`;
+  resultPanel.innerHTML = '';
+  $('#cycle-center-card').hidden = false;
+  $('#stat-row').hidden = false;
 
   const positive = data.profit >= 0;
-  $('#balance-end').classList.add(positive ? 'positive' : 'negative');
-  $('#profit-line').innerHTML = `
-    <span class="result-icon">⟲</span>
-    Lucro do ciclo completo:
-    <span class="result-diff ${positive ? 'positive' : 'negative'}">${positive ? '+' : ''}${fmt(data.profit)} ${startUnit} (${positive ? '+' : ''}${data.profitPct.toFixed(2)}%)</span>`;
+  const sign = positive ? '+' : '';
+  const cls = positive ? 'positive' : 'negative';
+
+  // USDT trades close to 1:1 with USD, so the anchor leg's own buy rate
+  // (fiat per USDT) doubles as a fiat-per-USD proxy - no separate FX lookup needed.
+  const profitUsd = data.profit / data.legA.buy.price;
+
+  $('#center-card-label').textContent = 'Lucro estimado';
+  $('#center-profit').textContent = `${sign}${fmt(data.profit)} ${startUnit}`;
+  $('#center-profit').className = `center-card-value ${cls}`;
+  $('#center-profit-usd').textContent = `${sign}${data.profitPct.toFixed(2)}% · ${sign}${fmt(profitUsd)} USD (aprox.)`;
+  $('#center-profit-usd').className = `center-card-usd ${cls}`;
+
+  $('#stat-investment').textContent = `${fmt(data.balance)} ${startUnit}`;
+  $('#stat-profit').textContent = `${sign}${fmt(data.profit)} ${startUnit}`;
+  $('#stat-profit').className = `stat-value ${cls}`;
+  $('#stat-profit-pct').textContent = `${sign}${data.profitPct.toFixed(2)}%`;
+  $('#stat-profit-pct').className = `stat-value ${cls}`;
+  $('#stat-profit-usd').textContent = `${sign}${fmt(profitUsd)} USD`;
+  $('#stat-profit-usd').className = `stat-value ${cls}`;
 
   const buyRate = data.legA.proceeds / data.balance;
   const sellRate = data.finalAmount / data.legA.proceeds;
-  $('#rate-line').innerHTML = `Taxa de compra efetiva: <b>1 ${startUnit} ≈ ${fmt(buyRate, 4)} ${midUnit}</b> &nbsp;·&nbsp; Taxa de venda efetiva: <b>1 ${midUnit} ≈ ${fmt(sellRate, 4)} ${startUnit}</b>`;
+  resultPanel.innerHTML = `<p class="rate-line">Taxa de compra efetiva: <b>1 ${startUnit} ≈ ${fmt(buyRate, 4)} ${midUnit}</b> &nbsp;·&nbsp; Taxa de venda efetiva: <b>1 ${midUnit} ≈ ${fmt(sellRate, 4)} ${startUnit}</b></p>`;
 }
 
 function currentUrl() {
@@ -204,7 +234,9 @@ async function refresh() {
     if (!res.ok) throw new Error(data.error || 'erro desconhecido');
 
     renderCycle(data.cycle, state.start, state.mode, state.fiatA, state.fiatB);
-    $('#status').textContent = `atualizado ${new Date(data.generatedAt).toLocaleTimeString('pt-PT')}`;
+    $('#status').textContent = 'atualizado agora';
+    const generated = new Date(data.generatedAt);
+    $('#updated-time').textContent = generated.toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' }) + ' ' + generated.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
   } catch (err) {
     $('#status').textContent = `falhou: ${err.message}`;
     $('#status').classList.add('error');
@@ -228,6 +260,18 @@ function updateTitles() {
   document.querySelectorAll('#start-toggle .toggle-btn[data-start="a"]').forEach((b) => (b.textContent = state.fiatA));
   document.querySelectorAll('#start-toggle .toggle-btn[data-start="b"]').forEach((b) => (b.textContent = state.fiatB));
   $('#scan-anchor').textContent = state.fiatA;
+  $('#cycle-subtitle').textContent = `Veja o ciclo completo de arbitragem entre ${state.fiatA} e ${state.fiatB}`;
+  updateBalanceBadge();
+}
+
+// The balance is always denominated in whichever fiat is the current anchor
+// (`start`), not necessarily fiatA - the badge next to the amount must track that.
+function updateBalanceBadge() {
+  const startCode = state.start === 'a' ? state.fiatA : state.fiatB;
+  const info = FIAT_INFO[startCode] || { flag: '🏳️', name: startCode };
+  $('#fiat-a-flag').textContent = info.flag;
+  $('#fiat-a-code').textContent = startCode;
+  $('#fiat-a-name').textContent = info.name;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.start = btn.dataset.start;
       document.querySelectorAll('#start-toggle .toggle-btn').forEach((b) => b.classList.toggle('active', b === btn));
       saveState();
+      updateBalanceBadge();
       refresh();
     });
   });
@@ -396,6 +441,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       saveState();
       refresh();
     });
+  });
+
+  $('#swap-btn').addEventListener('click', () => {
+    [state.fiatA, state.fiatB] = [state.fiatB, state.fiatA];
+    [state.methodA, state.methodB] = [state.methodB, state.methodA];
+    $('#fiat-a-select').value = state.fiatA;
+    $('#fiat-b-select').value = state.fiatB;
+    saveState();
+    updateTitles();
+    Promise.all([loadMethods('a'), loadMethods('b')]).then(refresh);
   });
 
   $('#scan-btn').addEventListener('click', runScanner);

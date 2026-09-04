@@ -335,6 +335,8 @@ function currentUrl() {
 let refreshQueued = false;
 
 async function refresh() {
+  updateClearFiltersButton();
+
   // Never silently drop a user action just because a previous request is
   // still in flight - queue exactly one follow-up run instead, using
   // whatever the state looks like BY THEN (currentUrl() is re-read fresh),
@@ -590,6 +592,27 @@ async function loadMethods(which) {
   }
 }
 
+function hasActiveFilters() {
+  return state.methodA.length > 0 || state.methodB.length > 0 || state.exchanges.length > 0 || Object.keys(pins).length > 0;
+}
+
+function updateClearFiltersButton() {
+  $('#clear-filters-btn').hidden = !hasActiveFilters();
+}
+
+/** Resets every filter (carteiras, exchanges, manual ad pins) back to "sem restrições" in one go. */
+function clearAllFilters() {
+  state.methodA = [];
+  state.methodB = [];
+  state.exchanges = [];
+  clearPins();
+  saveState();
+  closeAllMultiselects();
+  updateExchangeTrigger();
+  renderExchangeOptions();
+  Promise.all([loadMethods('a'), loadMethods('b')]).then(refresh);
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   $('#balance-input').value = state.balance;
   document.querySelectorAll('#mode-toggle .toggle-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.mode));
@@ -680,6 +703,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   $('#scan-btn').addEventListener('click', runScanner);
+
+  $('#clear-filters-btn').addEventListener('click', clearAllFilters);
 
   $('#cycle-diagram').addEventListener('click', (e) => {
     const target = e.target.closest('.ccaption, .cnode');

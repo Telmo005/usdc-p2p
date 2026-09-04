@@ -112,6 +112,27 @@ h1 .loop-icon {
 
 .balance-card { flex: 1 1 260px; }
 .pair-card { flex: 2 1 420px; flex-direction: row; align-items: flex-end; position: relative; gap: 14px; }
+
+.clear-filters-btn {
+  align-self: center;
+  flex: 0 0 auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 9px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.clear-filters-btn:hover {
+  border-color: var(--sell);
+  color: var(--sell);
+}
 .toggle-card { flex: 0 0 auto; justify-content: flex-end; }
 .exchange-card { flex: 0 1 170px; justify-content: flex-end; }
 

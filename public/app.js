@@ -45,6 +45,24 @@ function fmt(n, digits = 2) {
   return Number(n).toLocaleString('pt-PT', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
+/**
+ * Always quotes a rate as "1 <forte> ≈ X <fraca>", regardless of which fiat
+ * happens to be the cycle's start/mid - a rate like "1 MZN ≈ 0,22 ZAR" forces
+ * you to read a sub-1 fraction, while "1 ZAR ≈ 4,59 MZN" is the natural way
+ * anyone actually reads an exotic-currency rate. Strength is derived from the
+ * live market itself (whichever fiat costs fewer units per USDT), not a
+ * hardcoded list, so it holds for any pair the app supports.
+ */
+function orientRates(startUnit, midUnit, startPerUsdt, midPerUsdt, startToMid, midToStart) {
+  const startIsStrong = startPerUsdt <= midPerUsdt;
+  return {
+    strongUnit: startIsStrong ? startUnit : midUnit,
+    weakUnit: startIsStrong ? midUnit : startUnit,
+    compra: startIsStrong ? startToMid : 1 / startToMid,
+    venda: startIsStrong ? 1 / midToStart : midToStart,
+  };
+}
+
 function setNode(el, amount, unit, label, isFiat) {
   el.hidden = false;
   el.innerHTML = `
@@ -57,11 +75,15 @@ function hideNode(el) {
   el.hidden = true;
 }
 
+const PLATFORM_CLASS = { Binance: 'plat-binance', Bybit: 'plat-bybit', OKX: 'plat-okx' };
+
 function setCaption(el, kind, leg, num) {
   el.hidden = false;
   const warning = leg.fits === false ? `<div class="ccaption-warning">fora dos limites (${fmt(leg.minAmount, 0)}–${fmt(leg.maxAmount, 0)})</div>` : '';
+  const platformTag = leg.platform ? `<span class="ccaption-platform ${PLATFORM_CLASS[leg.platform] || ''}">${leg.platform}</span>` : '';
   el.innerHTML = `
     <span class="badge-num">${num}</span>
+    ${platformTag}
     <div class="ccaption-kind">${kind === 'buy' ? 'Taxa de compra' : 'Taxa de venda'}</div>
     <div class="ccaption-price">${fmt(leg.price, 4)}</div>
     <div class="ccaption-method">${leg.method ?? '-'} <span class="ccaption-who">· ${leg.advertiser ?? '-'}</span></div>
@@ -165,9 +187,10 @@ function renderResultPanel(data, start, mode, fiatA, fiatB) {
 
     const endAmount = data.legA.proceeds;
     const impliedRate = endAmount / data.balance;
+    const { strongUnit, weakUnit, compra, venda } = orientRates(startUnit, midUnit, data.legA.buy.price, data.legA.sell.price, impliedRate, 1 / impliedRate);
     resultPanel.innerHTML = `
       <p class="muted">Conversão só de ida: ${fmt(data.balance)} ${startUnit} → <b>${fmt(endAmount)} ${midUnit}</b>. Não há "lucro" para comparar, são moedas diferentes.</p>
-      <p class="rate-line">Taxa de compra efetiva: <b>1 ${startUnit} ≈ ${fmt(impliedRate, 4)} ${midUnit}</b> &nbsp;·&nbsp; Taxa de venda efetiva: <b>1 ${midUnit} ≈ ${fmt(1 / impliedRate, 4)} ${startUnit}</b></p>`;
+      <p class="rate-line">Taxa de compra efetiva: <b>1 ${strongUnit} ≈ ${fmt(compra, 4)} ${weakUnit}</b> &nbsp;·&nbsp; Taxa de venda efetiva: <b>1 ${strongUnit} ≈ ${fmt(venda, 4)} ${weakUnit}</b></p>`;
     return;
   }
 
@@ -199,7 +222,8 @@ function renderResultPanel(data, start, mode, fiatA, fiatB) {
 
   const buyRate = data.legA.proceeds / data.balance;
   const sellRate = data.finalAmount / data.legA.proceeds;
-  resultPanel.innerHTML = `<p class="rate-line">Taxa de compra efetiva: <b>1 ${startUnit} ≈ ${fmt(buyRate, 4)} ${midUnit}</b> &nbsp;·&nbsp; Taxa de venda efetiva: <b>1 ${midUnit} ≈ ${fmt(sellRate, 4)} ${startUnit}</b></p>`;
+  const { strongUnit, weakUnit, compra, venda } = orientRates(startUnit, midUnit, data.legA.buy.price, data.legA.sell.price, buyRate, sellRate);
+  resultPanel.innerHTML = `<p class="rate-line">Taxa de compra efetiva: <b>1 ${strongUnit} ≈ ${fmt(compra, 4)} ${weakUnit}</b> &nbsp;·&nbsp; Taxa de venda efetiva: <b>1 ${strongUnit} ≈ ${fmt(venda, 4)} ${weakUnit}</b></p>`;
 }
 
 function currentUrl() {

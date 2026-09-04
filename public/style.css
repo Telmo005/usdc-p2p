@@ -470,6 +470,25 @@ h1 .loop-icon {
   box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.5);
 }
 
+.ccaption-platform {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.ccaption-platform.plat-binance { color: #e0ab4a; border-color: rgba(224, 171, 74, 0.4); }
+.ccaption-platform.plat-bybit { color: #f7a600; border-color: rgba(247, 166, 0, 0.4); }
+.ccaption-platform.plat-okx { color: #a3a7b3; border-color: rgba(163, 167, 179, 0.4); }
+
 .pos-ne { top: 18%; left: 82%; }
 .pos-se { top: 82%; left: 82%; }
 .pos-sw { top: 82%; left: 18%; }

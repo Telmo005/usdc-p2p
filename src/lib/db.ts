@@ -112,20 +112,31 @@ export async function getDashboardSummary(userId: string) {
   };
 }
 
-export type MarketPoint = { t: string; price: number };
+export type MarketTick = { t: number; buy: number | null; sell: number | null };
+export type MarketReversal = { side: 'buy' | 'sell'; newTrend: 'up' | 'down'; fromPrice: number; toPrice: number; t: number };
 export type MarketSeries = {
   asset: string;
   fiat: string;
-  buy: { points: MarketPoint[]; trend: 'up' | 'down' | null; lastPrice: number | null };
-  sell: { points: MarketPoint[]; trend: 'up' | 'down' | null; lastPrice: number | null };
+  ticks: MarketTick[];
+  reversals: MarketReversal[];
+  buyTrend: 'up' | 'down' | null;
+  sellTrend: 'up' | 'down' | null;
+  lastBuy: number | null;
+  lastSell: number | null;
 };
 
 /**
  * Real Binance P2P price history for every tracked pair, for the market
  * chart on the Dashboard - fed by the market-sync cron (lib/marketAnalysis.ts).
  * Not user-scoped: this is shared market data, same for every user.
+ *
+ * Buy and sell snapshots for the same cron tick land a second or two apart
+ * (see lib/marketAnalysis.ts), not at the exact same timestamp - bucketing
+ * to the nearest minute merges them into one point per tick without relying
+ * on both arrays having matching lengths/order (a single failed fetch on
+ * one side must not misalign the rest of the series).
  */
-export async function getMarketSeries(hours = 48): Promise<MarketSeries[]> {
+export async function getMarketSeries(hours = 168): Promise<MarketSeries[]> {
   // avg_top_price (mean of the 5 best ads), not best_price - see the same
   // note in lib/marketAnalysis.ts on why a single top ad is too noisy to
   // chart or feed into trend detection on its own.
@@ -141,31 +152,68 @@ export async function getMarketSeries(hours = 48): Promise<MarketSeries[]> {
     `select asset, fiat, side, trend from p2p_manager.market_trend_state where platform = 'binance'`
   );
 
-  const pairs = new Map<string, MarketSeries>();
+  const reversalRows = await query<{ entity_id: string; created_at: string; after: MarketReversal & { asset: string; fiat: string } }>(
+    `select entity_id, created_at, after from p2p_manager.audit_log
+     where action = 'market_reversal' and created_at > now() - ($1 || ' hours')::interval
+     order by created_at asc`,
+    [hours]
+  );
+
+  const BUCKET_MS = 60_000;
   const key = (asset: string, fiat: string) => `${asset}/${fiat}`;
+  const buckets = new Map<string, Map<number, MarketTick>>();
+  const meta = new Map<string, { buyTrend: 'up' | 'down' | null; sellTrend: 'up' | 'down' | null; lastBuy: number | null; lastSell: number | null }>();
+  const reversals = new Map<string, MarketReversal[]>();
 
   for (const row of snapshots) {
     const k = key(row.asset, row.fiat);
-    if (!pairs.has(k)) {
-      pairs.set(k, {
-        asset: row.asset,
-        fiat: row.fiat,
-        buy: { points: [], trend: null, lastPrice: null },
-        sell: { points: [], trend: null, lastPrice: null },
-      });
-    }
-    const series = pairs.get(k)!;
-    const point = { t: row.created_at, price: Number(row.avg_top_price) };
-    series[row.side].points.push(point);
-    series[row.side].lastPrice = point.price;
+    if (!buckets.has(k)) buckets.set(k, new Map());
+    if (!meta.has(k)) meta.set(k, { buyTrend: null, sellTrend: null, lastBuy: null, lastSell: null });
+
+    const bucketT = Math.round(new Date(row.created_at).getTime() / BUCKET_MS) * BUCKET_MS;
+    const series = buckets.get(k)!;
+    if (!series.has(bucketT)) series.set(bucketT, { t: bucketT, buy: null, sell: null });
+    const price = Number(row.avg_top_price);
+    series.get(bucketT)![row.side] = price;
+
+    const m = meta.get(k)!;
+    if (row.side === 'buy') m.lastBuy = price;
+    else m.lastSell = price;
   }
 
   for (const row of trendRows) {
-    const series = pairs.get(key(row.asset, row.fiat));
-    if (series) series[row.side].trend = row.trend;
+    const m = meta.get(key(row.asset, row.fiat));
+    if (!m) continue;
+    if (row.side === 'buy') m.buyTrend = row.trend;
+    else m.sellTrend = row.trend;
   }
 
-  return [...pairs.values()];
+  for (const row of reversalRows) {
+    const k = key(row.after.asset, row.after.fiat);
+    if (!reversals.has(k)) reversals.set(k, []);
+    reversals.get(k)!.push({
+      side: row.after.side,
+      newTrend: row.after.newTrend,
+      fromPrice: row.after.fromPrice,
+      toPrice: row.after.toPrice,
+      t: new Date(row.created_at).getTime(),
+    });
+  }
+
+  return [...buckets.keys()].map((k) => {
+    const [asset, fiat] = k.split('/');
+    const m = meta.get(k)!;
+    return {
+      asset,
+      fiat,
+      ticks: [...buckets.get(k)!.values()].sort((a, b) => a.t - b.t),
+      reversals: reversals.get(k) ?? [],
+      buyTrend: m.buyTrend,
+      sellTrend: m.sellTrend,
+      lastBuy: m.lastBuy,
+      lastSell: m.lastSell,
+    };
+  });
 }
 
 export type AppNotification = {

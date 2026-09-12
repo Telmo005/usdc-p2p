@@ -1,15 +1,36 @@
 {
-  "name": "binance-p2p-dashboard",
-  "version": "1.0.0",
-  "description": "Dashboard para dados P2P da Binance: pesquisa por moeda, ranking de metodos de pagamento e calculadora de arbitragem compra/venda.",
-  "type": "commonjs",
-  "main": "server.js",
+  "name": "p2p-manager",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:apply": "node --env-file=.env.local scripts/apply-schema.mjs"
   },
   "dependencies": {
-    "compression": "^1.8.1",
-    "express": "^4.19.2"
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.45.0",
+    "next": "16.3.5",
+    "pg": "^8.23.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "^3.10.1",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }

@@ -35,7 +35,18 @@ export async function signUp(_prevState: { error?: string; success?: boolean } |
     email_confirm: true,
     user_metadata: { full_name: fullName },
   });
-  if (createError) return { error: createError.message };
+  if (createError) {
+    // `auth.users` is shared with other real systems in this Supabase
+    // project - this exact email can already exist there (created by
+    // payments/p2p_arbitrage/metical_edge) even though it's never signed up
+    // *here* before. Supabase's own message for that case is accurate but
+    // easy to misread as "something went wrong" - make the actual next step
+    // explicit instead.
+    if (createError.status === 422 || /already.*registered/i.test(createError.message)) {
+      return { error: 'Já existe uma conta com este email. Experimenta "Entrar" - se não souberes a palavra-passe, pede-nos para a repormos.' };
+    }
+    return { error: createError.message };
+  }
 
   const supabase = await createClient();
   const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });

@@ -15,8 +15,8 @@ export type BinanceC2COrder = {
   asset: string;
   fiat: string;
   fiatSymbol: string;
-  amount: string; // fiat total
-  totalPrice: string; // asset quantity
+  amount: string; // asset quantity
+  totalPrice: string; // fiat total
   unitPrice: string;
   orderStatus: string;
   createTime: number;

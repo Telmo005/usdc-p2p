@@ -53,6 +53,11 @@ export async function POST() {
          payment_method, status, raw, created_at, completed_at
        ) values ($1, 'binance', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, to_timestamp($13 / 1000.0), case when $11::text = 'completed' then to_timestamp($13 / 1000.0) else null end)
        on conflict (user_id, platform, external_order_id) do update set
+         quantity = excluded.quantity,
+         price = excluded.price,
+         total_value = excluded.total_value,
+         fee = excluded.fee,
+         payment_method = excluded.payment_method,
          status = excluded.status,
          completed_at = excluded.completed_at,
          raw = excluded.raw
@@ -63,9 +68,9 @@ export async function POST() {
         o.tradeType.toLowerCase(),
         o.asset,
         o.fiat,
-        o.totalPrice,
-        o.unitPrice,
         o.amount,
+        o.unitPrice,
+        o.totalPrice,
         o.commission ?? 0,
         o.payType ?? null,
         status,

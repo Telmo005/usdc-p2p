@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
-import { getDashboardSummary } from '@/lib/db';
+import { getDashboardSummary, getMarketSeries } from '@/lib/db';
 import { StatCard } from '@/components/StatCard';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SyncButton } from '@/components/SyncButton';
+import { MarketChart } from '@/components/MarketChart';
 
 function fmtMoney(n: number, currency: string) {
   return `${n.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
@@ -12,7 +13,9 @@ function fmtMoney(n: number, currency: string) {
 export default async function DashboardPage() {
   const { user, profile } = await requireUser();
   const summary = await getDashboardSummary(user.id);
+  const marketSeries = await getMarketSeries();
   const hasAnyOrder = summary.completedCount > 0 || summary.pendingCount > 0;
+  const fiat = profile?.reference_currency ?? 'MZN';
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -37,12 +40,18 @@ export default async function DashboardPage() {
         </div>
       )}
 
+      <div className="flex flex-col gap-4">
+        {marketSeries.map((series) => (
+          <MarketChart key={`${series.asset}-${series.fiat}`} series={series} />
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total comprado" value={fmtMoney(summary.totalBuy, 'USDT')} sub={`${summary.completedCount} operações concluídas`} />
-        <StatCard label="Total vendido" value={fmtMoney(summary.totalSell, 'USDT')} />
+        <StatCard label="Total comprado" value={fmtMoney(summary.totalBuy, fiat)} sub={`${summary.completedCount} operações concluídas`} />
+        <StatCard label="Total vendido" value={fmtMoney(summary.totalSell, fiat)} />
         <StatCard
           label="Lucro bruto"
-          value={fmtMoney(summary.grossProfit, 'USDT')}
+          value={fmtMoney(summary.grossProfit, fiat)}
           tone={summary.grossProfit >= 0 ? 'positive' : 'negative'}
           sub="Vendas − compras, sem taxas ainda deduzidas"
         />

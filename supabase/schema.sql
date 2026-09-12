@@ -230,6 +230,45 @@ create table if not exists p2p_manager.exchange_rates (
 );
 
 -- ---------------------------------------------------------------------------
+-- market_snapshots: periodic real snapshots of Binance P2P ad prices - shared
+-- market reference data (not user-scoped), feeds the buy/sell price chart and
+-- the trend-reversal notification engine.
+-- ---------------------------------------------------------------------------
+create table if not exists p2p_manager.market_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  platform text not null default 'binance',
+  asset text not null,
+  fiat text not null,
+  side text not null check (side in ('buy', 'sell')),
+  best_price numeric not null,
+  avg_top_price numeric not null,
+  sample_size int not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists market_snapshots_lookup_idx
+  on p2p_manager.market_snapshots (platform, asset, fiat, side, created_at desc);
+
+-- ---------------------------------------------------------------------------
+-- market_trend_state: one row per tracked (platform, asset, fiat, side) pair,
+-- holding the currently-confirmed trend so the cron job can detect a genuine
+-- reversal (not just tick-to-tick noise) and avoid re-notifying every run.
+-- ---------------------------------------------------------------------------
+create table if not exists p2p_manager.market_trend_state (
+  platform text not null default 'binance',
+  asset text not null,
+  fiat text not null,
+  side text not null check (side in ('buy', 'sell')),
+  trend text check (trend in ('up', 'down')),
+  candidate_trend text check (candidate_trend in ('up', 'down')),
+  candidate_streak int not null default 0,
+  trend_started_price numeric,
+  last_price numeric,
+  updated_at timestamptz not null default now(),
+  primary key (platform, asset, fiat, side)
+);
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security. Note on how this app actually connects: the Next.js
 -- server talks to Postgres directly via DATABASE_URL (the pooler/postgres
 -- role), not through PostgREST - that role bypasses RLS like any Postgres
@@ -253,6 +292,8 @@ alter table p2p_manager.notifications enable row level security;
 alter table p2p_manager.audit_log enable row level security;
 alter table p2p_manager.sync_state enable row level security;
 alter table p2p_manager.exchange_rates enable row level security;
+alter table p2p_manager.market_snapshots enable row level security;
+alter table p2p_manager.market_trend_state enable row level security;
 
 drop policy if exists profiles_select on p2p_manager.profiles;
 create policy profiles_select on p2p_manager.profiles for select using (id = auth.uid() or p2p_manager.is_admin());
@@ -293,3 +334,9 @@ create policy sync_state_all on p2p_manager.sync_state for all using (user_id = 
 
 drop policy if exists exchange_rates_select on p2p_manager.exchange_rates;
 create policy exchange_rates_select on p2p_manager.exchange_rates for select using (true);
+
+drop policy if exists market_snapshots_select on p2p_manager.market_snapshots;
+create policy market_snapshots_select on p2p_manager.market_snapshots for select using (true);
+
+drop policy if exists market_trend_state_select on p2p_manager.market_trend_state;
+create policy market_trend_state_select on p2p_manager.market_trend_state for select using (true);

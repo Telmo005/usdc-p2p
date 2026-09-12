@@ -112,6 +112,88 @@ export async function getDashboardSummary(userId: string) {
   };
 }
 
+export type MarketPoint = { t: string; price: number };
+export type MarketSeries = {
+  asset: string;
+  fiat: string;
+  buy: { points: MarketPoint[]; trend: 'up' | 'down' | null; lastPrice: number | null };
+  sell: { points: MarketPoint[]; trend: 'up' | 'down' | null; lastPrice: number | null };
+};
+
+/**
+ * Real Binance P2P price history for every tracked pair, for the market
+ * chart on the Dashboard - fed by the market-sync cron (lib/marketAnalysis.ts).
+ * Not user-scoped: this is shared market data, same for every user.
+ */
+export async function getMarketSeries(hours = 48): Promise<MarketSeries[]> {
+  // avg_top_price (mean of the 5 best ads), not best_price - see the same
+  // note in lib/marketAnalysis.ts on why a single top ad is too noisy to
+  // chart or feed into trend detection on its own.
+  const snapshots = await query<{ asset: string; fiat: string; side: 'buy' | 'sell'; avg_top_price: string; created_at: string }>(
+    `select asset, fiat, side, avg_top_price, created_at
+     from p2p_manager.market_snapshots
+     where platform = 'binance' and created_at > now() - ($1 || ' hours')::interval
+     order by created_at asc`,
+    [hours]
+  );
+
+  const trendRows = await query<{ asset: string; fiat: string; side: 'buy' | 'sell'; trend: 'up' | 'down' | null }>(
+    `select asset, fiat, side, trend from p2p_manager.market_trend_state where platform = 'binance'`
+  );
+
+  const pairs = new Map<string, MarketSeries>();
+  const key = (asset: string, fiat: string) => `${asset}/${fiat}`;
+
+  for (const row of snapshots) {
+    const k = key(row.asset, row.fiat);
+    if (!pairs.has(k)) {
+      pairs.set(k, {
+        asset: row.asset,
+        fiat: row.fiat,
+        buy: { points: [], trend: null, lastPrice: null },
+        sell: { points: [], trend: null, lastPrice: null },
+      });
+    }
+    const series = pairs.get(k)!;
+    const point = { t: row.created_at, price: Number(row.avg_top_price) };
+    series[row.side].points.push(point);
+    series[row.side].lastPrice = point.price;
+  }
+
+  for (const row of trendRows) {
+    const series = pairs.get(key(row.asset, row.fiat));
+    if (series) series[row.side].trend = row.trend;
+  }
+
+  return [...pairs.values()];
+}
+
+export type AppNotification = {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  const [row] = await query<{ n: string }>(
+    `select count(*) as n from p2p_manager.notifications where user_id = $1 and read_at is null`,
+    [userId]
+  );
+  return Number(row?.n ?? 0);
+}
+
+export async function getUserNotifications(userId: string, limit = 20): Promise<AppNotification[]> {
+  return query<AppNotification>(
+    `select id, type, title, body, read_at, created_at
+     from p2p_manager.notifications where user_id = $1
+     order by created_at desc limit $2`,
+    [userId, limit]
+  );
+}
+
 /**
  * `auth.users` is shared with the other systems in this Supabase project -
  * someone can already exist there (created by payments/p2p_arbitrage/

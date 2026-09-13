@@ -25,6 +25,10 @@ export type P2PAd = {
   advertiserOrderCount: number | null;
   advertiserFinishRate: number | null;
   advertiserIsMerchant: boolean;
+  /** The advertiser's own terms/description, when Binance's public endpoint
+   *  actually provides one - never fabricated if absent (see AdsBrowser.tsx,
+   *  which shows an explicit "not provided" message rather than nothing). */
+  remarks: string | null;
 };
 
 export type P2PSnapshot = {
@@ -43,6 +47,9 @@ type RawAdRow = {
     tradableQuantity: string;
     payTimeLimit: number | null;
     tradeMethods: Array<{ identifier: string; tradeMethodName: string }>;
+    // Not documented/guaranteed by Binance's public endpoint - read
+    // defensively, never assumed present. See P2PAd.remarks.
+    remarks?: string | null;
   };
   advertiser: {
     nickName: string;
@@ -53,6 +60,7 @@ type RawAdRow = {
 };
 
 function mapAd(row: RawAdRow): P2PAd {
+  const remarks = typeof row.adv.remarks === 'string' ? row.adv.remarks.trim() : '';
   return {
     advNo: row.adv.advNo,
     price: Number(row.adv.price),
@@ -65,6 +73,7 @@ function mapAd(row: RawAdRow): P2PAd {
     advertiserOrderCount: row.advertiser.monthOrderCount,
     advertiserFinishRate: row.advertiser.monthFinishRate,
     advertiserIsMerchant: row.advertiser.userType === 'merchant',
+    remarks: remarks.length > 0 ? remarks : null,
   };
 }
 

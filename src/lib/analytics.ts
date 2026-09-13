@@ -2,6 +2,8 @@ import { query } from '@/lib/db';
 
 export type PeriodDays = 7 | 30 | 90 | null; // null = all time
 
+export type PaymentMethodBreakdown = { method: string; count: number; volume: number };
+
 export type FiatKpis = {
   fiat: string;
   buyVolume: number;
@@ -12,6 +14,11 @@ export type FiatKpis = {
   avgSellPrice: number;
   buyCount: number;
   sellCount: number;
+  cancelledCount: number;
+  /** Avg (completed_at - created_at), minutes - null when no completed order
+   *  in this period has both timestamps set. */
+  avgCompletionMinutes: number | null;
+  byMethod: PaymentMethodBreakdown[];
 };
 
 export type DailyPoint = { t: number; buyVolume: number; sellVolume: number; profit: number; cumulativeProfit: number };
@@ -34,28 +41,60 @@ export async function getAnalytics(userId: string, days: PeriodDays): Promise<An
     quantity: string;
     price: string;
     total_value: string;
+    payment_method: string | null;
+    created_at: string;
     completed_at: string;
   }>(
     days == null
-      ? `select fiat, side, quantity, price, total_value, completed_at
+      ? `select fiat, side, quantity, price, total_value, payment_method, created_at, completed_at
          from p2p_manager.orders
          where user_id = $1 and status = 'completed'
          order by completed_at asc`
-      : `select fiat, side, quantity, price, total_value, completed_at
+      : `select fiat, side, quantity, price, total_value, payment_method, created_at, completed_at
          from p2p_manager.orders
          where user_id = $1 and status = 'completed' and completed_at > now() - ($2 || ' days')::interval
          order by completed_at asc`,
     days == null ? [userId] : [userId, days]
   );
 
+  const cancelledRows = await query<{ fiat: string; n: string }>(
+    days == null
+      ? `select fiat, count(*) as n from p2p_manager.orders where user_id = $1 and status = 'cancelled' group by fiat`
+      : `select fiat, count(*) as n from p2p_manager.orders where user_id = $1 and status = 'cancelled' and created_at > now() - ($2 || ' days')::interval group by fiat`,
+    days == null ? [userId] : [userId, days]
+  );
+  const cancelledByFiat = new Map(cancelledRows.map((r) => [r.fiat, Number(r.n)]));
+
   const byFiat = new Map<
     string,
-    { buyVolume: number; sellVolume: number; buyQty: number; sellQty: number; buyCount: number; sellCount: number }
+    {
+      buyVolume: number;
+      sellVolume: number;
+      buyQty: number;
+      sellQty: number;
+      buyCount: number;
+      sellCount: number;
+      completionMinutesSum: number;
+      completionMinutesCount: number;
+      methodStats: Map<string, { count: number; volume: number }>;
+    }
   >();
   const dayBucketsByFiat = new Map<string, Map<number, { buyVolume: number; sellVolume: number; profit: number }>>();
 
   for (const r of rows) {
-    if (!byFiat.has(r.fiat)) byFiat.set(r.fiat, { buyVolume: 0, sellVolume: 0, buyQty: 0, sellQty: 0, buyCount: 0, sellCount: 0 });
+    if (!byFiat.has(r.fiat)) {
+      byFiat.set(r.fiat, {
+        buyVolume: 0,
+        sellVolume: 0,
+        buyQty: 0,
+        sellQty: 0,
+        buyCount: 0,
+        sellCount: 0,
+        completionMinutesSum: 0,
+        completionMinutesCount: 0,
+        methodStats: new Map(),
+      });
+    }
     const agg = byFiat.get(r.fiat)!;
     const value = Number(r.total_value);
     const qty = Number(r.quantity);
@@ -69,6 +108,20 @@ export async function getAnalytics(userId: string, days: PeriodDays): Promise<An
       agg.sellQty += qty;
       agg.sellCount += 1;
     }
+
+    if (r.created_at && r.completed_at) {
+      const minutes = (new Date(r.completed_at).getTime() - new Date(r.created_at).getTime()) / 60_000;
+      if (minutes >= 0) {
+        agg.completionMinutesSum += minutes;
+        agg.completionMinutesCount += 1;
+      }
+    }
+
+    const method = r.payment_method ?? 'Não indicado';
+    if (!agg.methodStats.has(method)) agg.methodStats.set(method, { count: 0, volume: 0 });
+    const methodStat = agg.methodStats.get(method)!;
+    methodStat.count += 1;
+    methodStat.volume += value;
 
     if (!dayBucketsByFiat.has(r.fiat)) dayBucketsByFiat.set(r.fiat, new Map());
     const dayBuckets = dayBucketsByFiat.get(r.fiat)!;
@@ -97,6 +150,11 @@ export async function getAnalytics(userId: string, days: PeriodDays): Promise<An
       avgSellPrice: a.sellQty > 0 ? a.sellVolume / a.sellQty : 0,
       buyCount: a.buyCount,
       sellCount: a.sellCount,
+      cancelledCount: cancelledByFiat.get(fiat) ?? 0,
+      avgCompletionMinutes: a.completionMinutesCount > 0 ? a.completionMinutesSum / a.completionMinutesCount : null,
+      byMethod: [...a.methodStats.entries()]
+        .map(([method, s]) => ({ method, count: s.count, volume: s.volume }))
+        .sort((x, y) => y.volume - x.volume),
     }))
     .sort((a, b) => b.buyVolume + b.sellVolume - (a.buyVolume + a.sellVolume));
 

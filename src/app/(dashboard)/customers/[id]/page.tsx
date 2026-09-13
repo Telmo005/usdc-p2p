@@ -20,7 +20,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <div>
         <Link href="/customers" className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-accent">
-          <ArrowLeft size={12} /> Clientes
+          <ArrowLeft size={12} /> Contrapartes
         </Link>
         <div className="mt-2 flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-accent">
@@ -29,7 +29,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <div>
             <h1 className="text-xl font-bold">{customer.nickname}</h1>
             <p className="text-sm text-muted">
-              Cliente desde {new Date(customer.firstSeenAt).toLocaleDateString('pt-PT')} · última negociação{' '}
+              Contraparte desde {new Date(customer.firstSeenAt).toLocaleDateString('pt-PT')} · última negociação{' '}
               {new Date(customer.lastSeenAt).toLocaleDateString('pt-PT')}
             </p>
           </div>
@@ -46,7 +46,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         )}
       </div>
 
-      <SectionCard title="Histórico de ordens com este cliente">
+      <SectionCard title="Histórico de ordens com esta contraparte">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left text-sm">
             <thead>

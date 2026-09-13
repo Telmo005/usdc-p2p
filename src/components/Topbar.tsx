@@ -5,17 +5,8 @@ import { Bell } from 'lucide-react';
 import { signOut } from '@/app/login/actions';
 import { markAllNotificationsRead, markNotificationRead } from '@/app/actions/notifications';
 import { MobileNav } from '@/components/MobileNav';
+import { formatAge } from '@/lib/dataQuality';
 import type { AppNotification } from '@/lib/db';
-
-function timeAgo(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diffMs / 60_000);
-  if (mins < 1) return 'agora';
-  if (mins < 60) return `há ${mins} min`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `há ${hours}h`;
-  return `há ${Math.round(hours / 24)}d`;
-}
 
 function NotificationsBell({ unreadCount, notifications }: { unreadCount: number; notifications: AppNotification[] }) {
   const [open, setOpen] = useState(false);
@@ -66,7 +57,7 @@ function NotificationsBell({ unreadCount, notifications }: { unreadCount: number
                       {!n.read_at && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
                       {n.title}
                     </span>
-                    <span className="shrink-0 text-[10px] text-muted">{timeAgo(n.created_at)}</span>
+                    <span className="shrink-0 text-[10px] text-muted">{formatAge(n.created_at)}</span>
                   </div>
                   {n.body && <p className="mt-0.5 text-xs text-muted">{n.body}</p>}
                 </button>

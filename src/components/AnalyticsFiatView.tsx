@@ -55,6 +55,32 @@ export function AnalyticsFiatView({ data }: { data: AnalyticsData }) {
         <StatCard label="Preço médio de venda" value={fiat.avgSellPrice > 0 ? `${fmt(fiat.avgSellPrice, 4)} ${fiat.fiat}` : '—'} />
       </div>
 
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <StatCard label="Ordens canceladas" value={String(fiat.cancelledCount)} />
+        <StatCard
+          label="Tempo médio até concluir"
+          value={fiat.avgCompletionMinutes != null ? `${fmt(fiat.avgCompletionMinutes, 0)} min` : '—'}
+        />
+      </div>
+
+      {fiat.byMethod.length > 0 && (
+        <div className="mt-4 rounded-xl border border-border bg-surface p-4">
+          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Distribuição por método de pagamento</div>
+          <div className="flex flex-col gap-1.5">
+            {fiat.byMethod.map((m) => (
+              <div key={m.method} className="flex items-center justify-between text-sm">
+                <span className="text-muted">
+                  {m.method} <span className="text-xs">({m.count} ordens)</span>
+                </span>
+                <span className="font-mono">
+                  {fmt(m.volume)} {fiat.fiat}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-4">
         <AnalyticsChart series={data.seriesByFiat[fiat.fiat] ?? []} fiat={fiat.fiat} />
       </div>

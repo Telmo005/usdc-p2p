@@ -145,6 +145,90 @@ async function notifyReversal(ev: ReversalEvent): Promise<void> {
   );
 }
 
+export type MarketAnalysisPair = {
+  asset: string;
+  fiat: string;
+  volatilityBuyPct: number | null;
+  volatilitySellPct: number | null;
+  reversalCount: number;
+  /** Reversal frequency by hour (0-23), local server time - a real market
+   *  signal (confirmed direction change) unlike raw snapshot counts, which
+   *  would just reflect our own ~10 min polling schedule, not real activity. */
+  reversalsByHour: number[];
+  avgLiquidity: number | null;
+  liquidityTrend: 'up' | 'down' | 'flat' | null;
+};
+
+function average(values: number[]): number | null {
+  return values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+}
+
+/**
+ * Market intelligence for Análise, built entirely from what the existing
+ * cron already persists (market_snapshots, audit_log reversal events) -
+ * no new data collection needed. See DailyPoint from marketAnalysis and the
+ * "horários de maior atividade" note in the Phase 5 plan for why reversal
+ * frequency, not raw tick count, is the honest signal here.
+ */
+export async function getMarketAnalysis(days: number): Promise<MarketAnalysisPair[]> {
+  const hours = days * 24;
+  const results: MarketAnalysisPair[] = [];
+
+  for (const { asset, fiat } of TRACKED_PAIRS) {
+    const snaps = await query<{ side: 'buy' | 'sell'; avg_top_price: string; sample_size: number }>(
+      `select side, avg_top_price, sample_size from p2p_manager.market_snapshots
+       where platform = 'binance' and asset = $1 and fiat = $2 and created_at > now() - ($3 || ' hours')::interval`,
+      [asset, fiat, hours]
+    );
+    const prevSnaps = await query<{ sample_size: number }>(
+      `select sample_size from p2p_manager.market_snapshots
+       where platform = 'binance' and asset = $1 and fiat = $2
+         and created_at <= now() - ($3 || ' hours')::interval
+         and created_at > now() - ($4 || ' hours')::interval`,
+      [asset, fiat, hours, hours * 2]
+    );
+    const reversals = await query<{ created_at: string }>(
+      `select created_at from p2p_manager.audit_log
+       where action = 'market_reversal' and entity_id like $1 and created_at > now() - ($2 || ' hours')::interval`,
+      [`${asset}-${fiat}-%`, hours]
+    );
+
+    const buyPrices = snaps.filter((s) => s.side === 'buy').map((s) => Number(s.avg_top_price));
+    const sellPrices = snaps.filter((s) => s.side === 'sell').map((s) => Number(s.avg_top_price));
+    const volatility = (prices: number[]): number | null => {
+      if (prices.length === 0) return null;
+      const min = Math.min(...prices);
+      const max = Math.max(...prices);
+      const avg = average(prices)!;
+      return avg > 0 ? ((max - min) / avg) * 100 : null;
+    };
+
+    const curLiquidity = average(snaps.map((s) => s.sample_size));
+    const prevLiquidity = average(prevSnaps.map((s) => s.sample_size));
+    let liquidityTrend: 'up' | 'down' | 'flat' | null = null;
+    if (curLiquidity != null && prevLiquidity != null && prevLiquidity > 0) {
+      const changePct = ((curLiquidity - prevLiquidity) / prevLiquidity) * 100;
+      liquidityTrend = changePct > 5 ? 'up' : changePct < -5 ? 'down' : 'flat';
+    }
+
+    const reversalsByHour = new Array(24).fill(0);
+    for (const r of reversals) reversalsByHour[new Date(r.created_at).getHours()] += 1;
+
+    results.push({
+      asset,
+      fiat,
+      volatilityBuyPct: volatility(buyPrices),
+      volatilitySellPct: volatility(sellPrices),
+      reversalCount: reversals.length,
+      reversalsByHour,
+      avgLiquidity: curLiquidity,
+      liquidityTrend,
+    });
+  }
+
+  return results;
+}
+
 export type MarketSyncResult = {
   checked: Array<{ asset: string; fiat: string; side: Side; price: number | null }>;
   reversals: ReversalEvent[];

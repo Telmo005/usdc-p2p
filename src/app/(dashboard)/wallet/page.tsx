@@ -1,12 +1,16 @@
-import { Wallet, Landmark, Sprout, NotebookPen, History } from 'lucide-react';
+import Link from 'next/link';
+import { Wallet, Landmark, Sprout, NotebookPen, History, ArrowRightLeft } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { getMarketSeries } from '@/lib/db';
 import { getRealWalletSnapshot, getWalletMovements, type WalletGroup } from '@/lib/wallet';
+import { getMidRates } from '@/lib/exchangeRates';
+import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
 import { RefreshButton } from '@/components/RefreshButton';
 import { WalletMovementForm } from '@/components/WalletMovementForm';
+import { DataTag } from '@/components/DataTag';
 
 const TYPE_LABEL: Record<string, string> = { deposit: 'Depósito', withdrawal: 'Levantamento', adjustment: 'Ajuste' };
 const GROUP_ICON: Record<WalletGroup['id'], typeof Wallet> = { spot: Wallet, funding: Landmark };
@@ -23,6 +27,7 @@ function BalanceRow({
   mznRate,
   zarRate,
   sub,
+  simulateSellHref,
 }: {
   label: string;
   quantity: number;
@@ -31,6 +36,7 @@ function BalanceRow({
   mznRate: number | null;
   zarRate: number | null;
   sub?: string;
+  simulateSellHref?: string;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
@@ -59,19 +65,35 @@ function BalanceRow({
         ) : (
           <span className="text-muted">sem câmbio rastreado para este ativo</span>
         )}
+        {simulateSellHref && (
+          <Link
+            href={simulateSellHref}
+            className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-muted hover:border-accent hover:text-accent"
+          >
+            <ArrowRightLeft size={11} /> Simular venda
+          </Link>
+        )}
       </div>
     </div>
   );
 }
 
+/** Which fiat to send a "Simular venda" link to for this asset: the
+ *  profile's reference currency when that pair is actually tracked, else
+ *  whichever tracked fiat this asset has. Null when the asset has no
+ *  tracked market at all - there's no real price to simulate against. */
+function trackedFiatFor(asset: string, referenceCurrency: string): string | null {
+  const tracked = TRACKED_PAIRS.filter((p) => p.asset === asset);
+  if (tracked.length === 0) return null;
+  return tracked.find((p) => p.fiat === referenceCurrency)?.fiat ?? tracked[0].fiat;
+}
+
 export default async function WalletPage() {
-  const { user } = await requireUser();
+  const { user, profile } = await requireUser();
+  const referenceCurrency = profile?.reference_currency ?? 'MZN';
 
   const marketSeries = await getMarketSeries();
-  const mzn = marketSeries.find((s) => s.fiat === 'MZN');
-  const zar = marketSeries.find((s) => s.fiat === 'ZAR');
-  const mznRate = mzn?.lastBuy != null && mzn?.lastSell != null ? (mzn.lastBuy + mzn.lastSell) / 2 : null;
-  const zarRate = zar?.lastBuy != null && zar?.lastSell != null ? (zar.lastBuy + zar.lastSell) / 2 : null;
+  const { mznRate, zarRate } = getMidRates(marketSeries);
 
   let snapshot: Awaited<ReturnType<typeof getRealWalletSnapshot>> | null = null;
   let fetchError: string | null = null;
@@ -109,9 +131,7 @@ export default async function WalletPage() {
           <div className="rounded-xl border border-accent/40 bg-accent/5 p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-xs uppercase tracking-wide text-accent">Total em todas as carteiras</span>
-              <span className="text-[11px] text-muted">
-                lido {new Date(snapshot.fetchedAt).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </span>
+              <DataTag source="binance_private" fetchedAt={snapshot.fetchedAt} label="Binance (conta)" />
             </div>
             <div className="mt-1 flex flex-wrap items-end gap-x-6 gap-y-1">
               <span className="font-mono text-3xl font-bold">{fmt(snapshot.totalUsd, 4)} USD</span>
@@ -119,10 +139,13 @@ export default async function WalletPage() {
               {snapshot.totalZar != null && <span className="font-mono text-base text-muted">≈ {fmt(snapshot.totalZar)} ZAR</span>}
             </div>
             {(snapshot.mznRate != null || snapshot.zarRate != null) && (
-              <div className="mt-2 text-[11px] text-muted">
-                Câmbio: {snapshot.mznRate != null && `${snapshot.mznRate.toFixed(4)} MZN por USD`}
-                {snapshot.mznRate != null && snapshot.zarRate != null && ' · '}
-                {snapshot.zarRate != null && `${snapshot.zarRate.toFixed(4)} ZAR por USD`} (preço médio de mercado atual)
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                <span>
+                  Câmbio: {snapshot.mznRate != null && `${snapshot.mznRate.toFixed(4)} MZN por USD`}
+                  {snapshot.mznRate != null && snapshot.zarRate != null && ' · '}
+                  {snapshot.zarRate != null && `${snapshot.zarRate.toFixed(4)} ZAR por USD`} (preço médio de mercado atual)
+                </span>
+                <DataTag source="estimated" />
               </div>
             )}
           </div>
@@ -143,17 +166,25 @@ export default async function WalletPage() {
                       <EmptyState title="Vazia" description="Sem saldo nesta carteira agora." />
                     ) : (
                       <div className="flex flex-col gap-2">
-                        {g.balances.map((b) => (
-                          <BalanceRow
-                            key={b.asset}
-                            label={b.asset}
-                            quantity={b.quantity}
-                            quantityFrac={8}
-                            usdEquivalent={b.usdEquivalent}
-                            mznRate={mznRate}
-                            zarRate={zarRate}
-                          />
-                        ))}
+                        {g.balances.map((b) => {
+                          const sellFiat = b.quantity > 0 ? trackedFiatFor(b.asset, referenceCurrency) : null;
+                          return (
+                            <BalanceRow
+                              key={b.asset}
+                              label={b.asset}
+                              quantity={b.quantity}
+                              quantityFrac={8}
+                              usdEquivalent={b.usdEquivalent}
+                              mznRate={mznRate}
+                              zarRate={zarRate}
+                              simulateSellHref={
+                                sellFiat
+                                  ? `/simulation?asset=${b.asset}&fiat=${sellFiat}&wallet=${g.id}&qty=${b.quantity}`
+                                  : undefined
+                              }
+                            />
+                          );
+                        })}
                         <div className="mt-1 flex justify-between border-t border-border pt-2 text-xs text-muted">
                           <span>Subtotal</span>
                           <span className="font-mono text-foreground">{fmt(g.totalUsd, 4)} USD</span>

@@ -19,13 +19,13 @@ export default async function CustomersPage() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div>
-        <h1 className="text-xl font-bold">Clientes</h1>
+        <h1 className="text-xl font-bold">Contrapartes</h1>
         <p className="mt-1 text-sm text-muted">As contrapartes com quem já negociaste, a partir do teu histórico sincronizado da Binance.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard icon={Users} label="Contrapartes" value={String(customers.length)} />
-        <StatCard icon={Repeat} label="Clientes recorrentes" value={String(recurring.length)} sub="2 ou mais ordens concluídas" />
+        <StatCard icon={Repeat} label="Contrapartes recorrentes" value={String(recurring.length)} sub="2 ou mais ordens concluídas" />
       </div>
 
       <SectionCard title="Todas as contrapartes" icon={Users} subtitle={customers.length > 0 ? `${customers.length} contrapartes` : undefined}>

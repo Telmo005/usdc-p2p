@@ -3,6 +3,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { NAV_ITEMS } from '@/components/navItems';
+import { formatAge, getFreshness } from '@/lib/dataQuality';
+
+// Orders sync is manually/periodically triggered, not a live feed - a much
+// more generous cadence than the default (market-tick oriented) thresholds.
+const ORDERS_SYNC_THRESHOLDS = { delayedAfterMs: 2 * 3600_000, staleAfterMs: 24 * 3600_000 };
 
 export function Sidebar({
   connectionOk,
@@ -42,7 +47,13 @@ export function Sidebar({
           <span className={`inline-block h-2 w-2 rounded-full ${connectionOk ? 'bg-positive' : 'bg-negative'}`} />
           {connectionOk ? 'Binance conectada' : 'Binance desconectada'}
         </div>
-        <div className="mt-1">{lastSyncedAt ? `Última sinc.: ${new Date(lastSyncedAt).toLocaleString('pt-PT')}` : 'Ainda sem sincronização'}</div>
+        <div className="mt-1">
+          {lastSyncedAt
+            ? `Última sinc.: ${formatAge(lastSyncedAt)}${
+                getFreshness(lastSyncedAt, ORDERS_SYNC_THRESHOLDS) === 'stale' ? ' (desatualizada)' : ''
+              }`
+            : 'Ainda sem sincronização'}
+        </div>
       </div>
     </aside>
   );

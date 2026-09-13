@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { DataTag } from '@/components/DataTag';
 
 type Pair = { asset: string; fiat: string; buyPrice: number | null; sellPrice: number | null };
 
@@ -95,9 +96,12 @@ export function CurrencyCycle({ pairs }: { pairs: Pair[] }) {
               Comprar com <span className="text-accent">{calc.cheaperSide}</span> está {calc.diffPct.toFixed(2)}% mais barato
               (câmbio implícito do próprio mercado)
             </div>
-            <div className="mt-1 text-xs text-muted">
-              1 USDT: {calc.mBuy.toFixed(4)} MZN a comprar com MZN · {calc.zBuy.toFixed(4)} ZAR a comprar com ZAR ≈{' '}
-              {calc.zarBuyInMzn.toFixed(4)} MZN equivalente · câmbio médio implícito: {fmtRand(calc.midRate)}
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span>
+                1 USDT: {calc.mBuy.toFixed(4)} MZN a comprar com MZN · {calc.zBuy.toFixed(4)} ZAR a comprar com ZAR ≈{' '}
+                {calc.zarBuyInMzn.toFixed(4)} MZN equivalente · câmbio médio implícito: {fmtRand(calc.midRate)}
+              </span>
+              <DataTag source="estimated" />
             </div>
           </div>
 
@@ -135,7 +139,10 @@ export function CurrencyCycle({ pairs }: { pairs: Pair[] }) {
           </div>
 
           <div className="mt-4 rounded-lg border border-border bg-background p-4">
-            <div className="text-xs uppercase tracking-wide text-muted">Resultado da viagem completa (ida e volta)</div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs uppercase tracking-wide text-muted">Resultado da viagem completa (ida e volta)</div>
+              <DataTag source="simulated" />
+            </div>
             <div className="mt-1 text-sm">
               Começaste com {Number(amount).toLocaleString('pt-PT')} MZN, ficas com{' '}
               <span className="font-mono font-semibold">{calc.mznBack.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} MZN</span>

@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { computeProfit, maxBuyPrice, requiredQuantityForProfitAmount, requiredSellPrice } from '@/lib/profitCalculator';
+import { DataTag } from '@/components/DataTag';
 
 type Mode = 'sellPrice' | 'buyPrice' | 'profit' | 'quantity';
 
@@ -14,19 +15,35 @@ const MODES: Array<{ id: Mode; label: string; hint: string }> = [
 
 export function ProfitCalculator({
   marketPairs,
+  initialAsset,
+  initialFiat,
+  initialSide,
+  initialPrice,
 }: {
   marketPairs: Array<{ asset: string; fiat: string; buyPrice: number | null; sellPrice: number | null }>;
+  /** Arriving from a specific ad (Anúncios → Simular): its exact price is
+   *  for one side only - the other stays editable/blank, and `mode`
+   *  defaults to solving for that other side. */
+  initialAsset?: string;
+  initialFiat?: string;
+  initialSide?: 'buy' | 'sell';
+  initialPrice?: number;
 }) {
-  const [mode, setMode] = useState<Mode>('sellPrice');
-  const [asset, setAsset] = useState('USDT');
-  const [fiat, setFiat] = useState(marketPairs[0]?.fiat ?? 'MZN');
+  const [mode, setMode] = useState<Mode>(initialSide === 'sell' ? 'buyPrice' : 'sellPrice');
+  const [asset, setAsset] = useState(initialAsset ?? 'USDT');
+  const [fiat, setFiat] = useState(initialFiat ?? marketPairs[0]?.fiat ?? 'MZN');
   const [quantity, setQuantity] = useState('100');
-  const [buyPrice, setBuyPrice] = useState('');
-  const [sellPrice, setSellPrice] = useState('');
+  const [buyPrice, setBuyPrice] = useState(initialSide === 'buy' && initialPrice != null ? String(initialPrice) : '');
+  const [sellPrice, setSellPrice] = useState(initialSide === 'sell' && initialPrice != null ? String(initialPrice) : '');
   const [buyFee, setBuyFee] = useState('0');
   const [sellFee, setSellFee] = useState('0');
   const [minProfitPct, setMinProfitPct] = useState('2');
   const [targetProfitAmount, setTargetProfitAmount] = useState('50');
+
+  // Which field, if any, holds a real ad's exact price rather than a typed
+  // guess or the aggregate market rate - purely for the DataTag below, never
+  // recomputed after mount (the ad that was clicked doesn't change).
+  const adPriceField = initialPrice != null ? initialSide : undefined;
 
   const n = (s: string) => {
     const v = Number(s);
@@ -124,8 +141,22 @@ export function ProfitCalculator({
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <NumField label={`Quantidade (${asset})`} value={quantity} onChange={setQuantity} readOnly={mode === 'quantity'} highlight={mode === 'quantity'} />
-        <NumField label={`Preço de compra (${fiat})`} value={buyPrice} onChange={setBuyPrice} readOnly={mode === 'buyPrice'} highlight={mode === 'buyPrice'} />
-        <NumField label={`Preço de venda (${fiat})`} value={sellPrice} onChange={setSellPrice} readOnly={mode === 'sellPrice'} highlight={mode === 'sellPrice'} />
+        <NumField
+          label={`Preço de compra (${fiat})`}
+          value={buyPrice}
+          onChange={setBuyPrice}
+          readOnly={mode === 'buyPrice'}
+          highlight={mode === 'buyPrice'}
+          tag={adPriceField === 'buy' ? <DataTag source="binance_public" label="preço deste anúncio" /> : undefined}
+        />
+        <NumField
+          label={`Preço de venda (${fiat})`}
+          value={sellPrice}
+          onChange={setSellPrice}
+          readOnly={mode === 'sellPrice'}
+          highlight={mode === 'sellPrice'}
+          tag={adPriceField === 'sell' ? <DataTag source="binance_public" label="preço deste anúncio" /> : undefined}
+        />
         {mode === 'quantity' ? (
           <NumField label={`Lucro alvo (${fiat})`} value={targetProfitAmount} onChange={setTargetProfitAmount} />
         ) : (
@@ -147,26 +178,29 @@ export function ProfitCalculator({
         {!result ? (
           <p className="text-sm text-muted">Preenche os valores para veres o resultado.</p>
         ) : (
-          <div className="flex flex-wrap items-center gap-6">
-            {result.solvedLabel && (
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            <div className="flex flex-wrap items-center gap-6">
+              {result.solvedLabel && (
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted">{result.solvedLabel}</div>
+                  <div className="font-mono text-xl font-bold text-accent">
+                    {result.solvedValue!.toLocaleString('pt-PT', { maximumFractionDigits: 4 })} {result.solvedLabel.includes('Quantidade') ? asset : fiat}
+                  </div>
+                </div>
+              )}
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted">{result.solvedLabel}</div>
-                <div className="font-mono text-xl font-bold text-accent">
-                  {result.solvedValue!.toLocaleString('pt-PT', { maximumFractionDigits: 4 })} {result.solvedLabel.includes('Quantidade') ? asset : fiat}
+                <div className="text-xs uppercase tracking-wide text-muted">Lucro</div>
+                <div className={`font-mono text-xl font-bold ${result.profit.profit >= 0 ? 'text-positive' : 'text-negative'}`}>
+                  {result.profit.profit.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {fiat} (
+                  {result.profit.profitPct >= 0 ? '+' : ''}
+                  {result.profit.profitPct.toFixed(2)}%)
                 </div>
               </div>
-            )}
-            <div>
-              <div className="text-xs uppercase tracking-wide text-muted">Lucro</div>
-              <div className={`font-mono text-xl font-bold ${result.profit.profit >= 0 ? 'text-positive' : 'text-negative'}`}>
-                {result.profit.profit.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {fiat} (
-                {result.profit.profitPct >= 0 ? '+' : ''}
-                {result.profit.profitPct.toFixed(2)}%)
+              <div className="text-xs text-muted">
+                Custo total: {result.profit.cost.toFixed(2)} {fiat} · Retorno total: {result.profit.proceeds.toFixed(2)} {fiat}
               </div>
             </div>
-            <div className="text-xs text-muted">
-              Custo total: {result.profit.cost.toFixed(2)} {fiat} · Retorno total: {result.profit.proceeds.toFixed(2)} {fiat}
-            </div>
+            <DataTag source="simulated" />
           </div>
         )}
       </div>
@@ -182,6 +216,7 @@ function NumField({
   disabled,
   highlight,
   small,
+  tag,
 }: {
   label: string;
   value: string;
@@ -190,10 +225,14 @@ function NumField({
   disabled?: boolean;
   highlight?: boolean;
   small?: boolean;
+  tag?: ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1.5 text-sm">
-      <span className="text-xs text-muted">{label}</span>
+      <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+        {label}
+        {tag}
+      </span>
       <input
         type="number"
         step="any"

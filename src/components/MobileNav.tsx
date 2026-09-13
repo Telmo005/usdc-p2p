@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { NAV_ITEMS } from '@/components/navItems';
+import { formatAge, getFreshness } from '@/lib/dataQuality';
+
+const ORDERS_SYNC_THRESHOLDS = { delayedAfterMs: 2 * 3600_000, staleAfterMs: 24 * 3600_000 };
 
 export function MobileNav({ connectionOk, lastSyncedAt }: { connectionOk: boolean; lastSyncedAt: string | null }) {
   const [open, setOpen] = useState(false);
@@ -67,7 +70,11 @@ export function MobileNav({ connectionOk, lastSyncedAt }: { connectionOk: boolea
                 {connectionOk ? 'Binance conectada' : 'Binance desconectada'}
               </div>
               <div className="mt-1">
-                {lastSyncedAt ? `Última sinc.: ${new Date(lastSyncedAt).toLocaleString('pt-PT')}` : 'Ainda sem sincronização'}
+                {lastSyncedAt
+                  ? `Última sinc.: ${formatAge(lastSyncedAt)}${
+                      getFreshness(lastSyncedAt, ORDERS_SYNC_THRESHOLDS) === 'stale' ? ' (desatualizada)' : ''
+                    }`
+                  : 'Ainda sem sincronização'}
               </div>
             </div>
           </div>

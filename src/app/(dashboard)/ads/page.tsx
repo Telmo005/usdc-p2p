@@ -3,22 +3,24 @@ import { Megaphone } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
 import { fetchP2PSnapshot } from '@/lib/binancePublicP2P';
+import { getCounterpartyNicknameMap } from '@/lib/customers';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { AdsBrowser, type AdBook } from '@/components/AdsBrowser';
 
 const SIDES = ['buy', 'sell'] as const;
 
 export default async function AdsPage() {
-  await requireUser();
+  const { user } = await requireUser();
+  const counterpartyByNickname = await getCounterpartyNicknameMap(user.id);
 
   const books: AdBook[] = await Promise.all(
     TRACKED_PAIRS.flatMap(({ asset, fiat }) =>
       SIDES.map(async (side): Promise<AdBook> => {
         try {
           const snapshot = await fetchP2PSnapshot(asset, fiat, side, 20);
-          return { asset, fiat, side, ads: snapshot?.ads ?? [], error: null };
+          return { asset, fiat, side, ads: snapshot?.ads ?? [], error: null, fetchedAt: Date.now() };
         } catch (err) {
-          return { asset, fiat, side, ads: null, error: err instanceof Error ? err.message : 'Falha ao ler o mercado.' };
+          return { asset, fiat, side, ads: null, error: err instanceof Error ? err.message : 'Falha ao ler o mercado.', fetchedAt: Date.now() };
         }
       })
     )
@@ -40,7 +42,7 @@ export default async function AdsPage() {
       </div>
 
       <SectionCard title="Mercado agora">
-        <AdsBrowser books={books} />
+        <AdsBrowser books={books} counterpartyByNickname={counterpartyByNickname} />
       </SectionCard>
 
       <SectionCard title="Sobre os teus próprios anúncios" icon={Megaphone} muted>

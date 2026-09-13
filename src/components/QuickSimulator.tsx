@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { DataTag } from '@/components/DataTag';
 
 type Pair = { asset: string; fiat: string; buyPrice: number | null; sellPrice: number | null };
 
@@ -68,30 +69,35 @@ export function QuickSimulator({ pairs }: { pairs: Pair[] }) {
       </div>
 
       {result && (
-        <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-3 rounded-lg border border-border bg-background p-4">
-          <div>
-            <div className="text-xs text-muted">Compras agora</div>
-            <div className="font-mono text-lg font-semibold">
-              {result.qty.toLocaleString('pt-PT', { maximumFractionDigits: 4 })} {pair.asset}
-            </div>
-            <div className="text-xs text-muted">a {pair.buyPrice!.toFixed(4)} {pair.fiat}/{pair.asset}</div>
+        <div className="mt-5 rounded-lg border border-border bg-background p-4">
+          <div className="mb-3 flex justify-end">
+            <DataTag source="simulated" />
           </div>
-          <div className="text-xl text-muted">→</div>
-          <div>
-            <div className="text-xs text-muted">Se vendesses agora, recebias</div>
-            <div className="font-mono text-lg font-semibold">
-              {result.proceeds.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {pair.fiat}
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+            <div>
+              <div className="text-xs text-muted">Compras agora</div>
+              <div className="font-mono text-lg font-semibold">
+                {result.qty.toLocaleString('pt-PT', { maximumFractionDigits: 4 })} {pair.asset}
+              </div>
+              <div className="text-xs text-muted">a {pair.buyPrice!.toFixed(4)} {pair.fiat}/{pair.asset}</div>
             </div>
-            <div className="text-xs text-muted">a {pair.sellPrice!.toFixed(4)} {pair.fiat}/{pair.asset}</div>
-          </div>
-          <div className="text-xl text-muted">=</div>
-          <div>
-            <div className="text-xs text-muted">Lucro se fizesses isto agora</div>
-            <div className={`font-mono text-xl font-bold ${result.profit >= 0 ? 'text-positive' : 'text-negative'}`}>
-              {result.profit >= 0 ? '+' : ''}
-              {result.profit.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {pair.fiat} (
-              {result.profitPct >= 0 ? '+' : ''}
-              {result.profitPct.toFixed(2)}%)
+            <div className="text-xl text-muted">→</div>
+            <div>
+              <div className="text-xs text-muted">Se vendesses agora, recebias</div>
+              <div className="font-mono text-lg font-semibold">
+                {result.proceeds.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {pair.fiat}
+              </div>
+              <div className="text-xs text-muted">a {pair.sellPrice!.toFixed(4)} {pair.fiat}/{pair.asset}</div>
+            </div>
+            <div className="text-xl text-muted">=</div>
+            <div>
+              <div className="text-xs text-muted">Lucro se fizesses isto agora</div>
+              <div className={`font-mono text-xl font-bold ${result.profit >= 0 ? 'text-positive' : 'text-negative'}`}>
+                {result.profit >= 0 ? '+' : ''}
+                {result.profit.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {pair.fiat} (
+                {result.profitPct >= 0 ? '+' : ''}
+                {result.profitPct.toFixed(2)}%)
+              </div>
             </div>
           </div>
         </div>

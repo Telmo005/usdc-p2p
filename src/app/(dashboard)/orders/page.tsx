@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { ListChecks } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { query } from '@/lib/db';
@@ -86,23 +87,47 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                 </thead>
                 <tbody>
                   {rows.map((o) => (
-                    <tr key={o.id} className="border-t border-border">
-                      <td className="py-2 pr-4 font-mono text-xs text-muted">{o.external_order_id}</td>
-                      <td className="py-2 pr-4">{o.side === 'buy' ? 'Compra' : 'Venda'}</td>
+                    <tr key={o.id} className="cursor-pointer border-t border-border hover:bg-surface-raised">
+                      <td className="py-2 pr-4 font-mono text-xs text-muted">
+                        <Link href={`/orders/${o.id}`} className="block hover:text-accent">
+                          {o.external_order_id}
+                        </Link>
+                      </td>
                       <td className="py-2 pr-4">
-                        {o.quantity} {o.asset}
+                        <Link href={`/orders/${o.id}`} className="block">
+                          {o.side === 'buy' ? 'Compra' : 'Venda'}
+                        </Link>
+                      </td>
+                      <td className="py-2 pr-4">
+                        <Link href={`/orders/${o.id}`} className="block">
+                          {o.quantity} {o.asset}
+                        </Link>
                       </td>
                       <td className="py-2 pr-4 font-mono">
-                        {o.price} {o.fiat}
+                        <Link href={`/orders/${o.id}`} className="block">
+                          {o.price} {o.fiat}
+                        </Link>
                       </td>
                       <td className="py-2 pr-4 font-mono">
-                        {o.total_value} {o.fiat}
+                        <Link href={`/orders/${o.id}`} className="block">
+                          {o.total_value} {o.fiat}
+                        </Link>
                       </td>
-                      <td className="py-2 pr-4">{o.payment_method ?? '-'}</td>
                       <td className="py-2 pr-4">
-                        <StatusBadge status={o.status} />
+                        <Link href={`/orders/${o.id}`} className="block">
+                          {o.payment_method ?? '-'}
+                        </Link>
                       </td>
-                      <td className="py-2 text-muted">{new Date(o.created_at).toLocaleString('pt-PT')}</td>
+                      <td className="py-2 pr-4">
+                        <Link href={`/orders/${o.id}`} className="block">
+                          <StatusBadge status={o.status} />
+                        </Link>
+                      </td>
+                      <td className="py-2 text-muted">
+                        <Link href={`/orders/${o.id}`} className="block">
+                          {new Date(o.created_at).toLocaleString('pt-PT')}
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -111,7 +136,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
 
             <div className="flex flex-col gap-3 md:hidden">
               {rows.map((o) => (
-                <div key={o.id} className="rounded-lg border border-border p-3">
+                <Link key={o.id} href={`/orders/${o.id}`} className="block rounded-lg border border-border p-3 hover:border-accent">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium">
                       {o.side === 'buy' ? 'Compra' : 'Venda'} · {o.quantity} {o.asset}
@@ -141,7 +166,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                       {new Date(o.created_at).toLocaleDateString('pt-PT')}
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </>

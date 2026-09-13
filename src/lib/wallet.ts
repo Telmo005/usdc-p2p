@@ -28,6 +28,22 @@ export async function getWalletMovements(userId: string, asset?: string): Promis
   );
 }
 
+export type MovementSummaryRow = { type: string; asset: string; count: number; total: number };
+
+/** Personal-ledger summary for Análise's "movimentação" - grouped by
+ *  (type, asset), never summed across assets (a USDT amount and an MZN
+ *  amount aren't the same kind of number). */
+export async function getMovementSummary(userId: string, days: number | null): Promise<MovementSummaryRow[]> {
+  const rows = await query<{ type: string; asset: string; n: string; total: string }>(
+    days == null
+      ? `select type, asset, count(*) as n, sum(amount) as total from p2p_manager.wallet_movements where user_id = $1 group by type, asset`
+      : `select type, asset, count(*) as n, sum(amount) as total from p2p_manager.wallet_movements
+         where user_id = $1 and created_at > now() - ($2 || ' days')::interval group by type, asset`,
+    days == null ? [userId] : [userId, days]
+  );
+  return rows.map((r) => ({ type: r.type, asset: r.asset, count: Number(r.n), total: Number(r.total) }));
+}
+
 export async function createWalletMovement(
   userId: string,
   args: { type: 'deposit' | 'withdrawal' | 'adjustment'; asset: string; amount: number; notes: string | null }
@@ -42,7 +58,7 @@ export async function createWalletMovement(
 // figure. No fabricated exchange rate for anything else.
 const STABLE_ASSETS = new Set(['USDT', 'USDC', 'BUSD', 'FDUSD', 'TUSD', 'DAI']);
 
-export type WalletBalance = { asset: string; quantity: number; usdEquivalent: number | null };
+export type WalletBalance = { asset: string; quantity: number; free: number; locked: number; usdEquivalent: number | null };
 export type EarnBalance = {
   asset: string;
   principal: number;
@@ -77,7 +93,7 @@ function toBalances(raw: Array<{ asset: string; free: number; locked: number }>)
     .filter((b) => !b.asset.startsWith('LD')) // Earn's wrapped token - shown for real under `earn` instead
     .map((b) => {
       const quantity = b.free + b.locked;
-      return { asset: b.asset, quantity, usdEquivalent: STABLE_ASSETS.has(b.asset) ? quantity : null };
+      return { asset: b.asset, quantity, free: b.free, locked: b.locked, usdEquivalent: STABLE_ASSETS.has(b.asset) ? quantity : null };
     })
     .sort((a, b) => (b.usdEquivalent ?? 0) - (a.usdEquivalent ?? 0) || b.quantity - a.quantity);
 }
@@ -138,4 +154,42 @@ export async function getRealWalletSnapshot(mznRate: number | null, zarRate: num
     zarRate,
     fetchedAt: Date.now(),
   };
+}
+
+/**
+ * Persists one real point of "how much is the whole account worth right
+ * now" - called from the market-sync cron (lib/marketAnalysis.ts's caller,
+ * api/cron/market-sync/route.ts), piggybacking on its existing ~10 min
+ * schedule rather than needing a second external cron. Global/shared, no
+ * user_id - same reasoning as market_snapshots (see schema.sql): one real
+ * Binance account behind BINANCE_API_KEY regardless of who's logged in.
+ * History only starts from whenever this first runs - never backfilled.
+ */
+export async function recordAccountSnapshot(mznRate: number | null, zarRate: number | null): Promise<void> {
+  const snapshot = await getRealWalletSnapshot(mznRate, zarRate);
+  await query(
+    `insert into p2p_manager.account_snapshots (total_usd, total_mzn, total_zar) values ($1, $2, $3)`,
+    [snapshot.totalUsd, snapshot.totalMzn, snapshot.totalZar]
+  );
+}
+
+export type AssetDistributionRow = { asset: string; usdEquivalent: number };
+
+/** Real portfolio value grouped by asset, across every wallet (Spot,
+ *  Funding, Earn) - spec's "distribuição por ativo". Assets with no tracked
+ *  USD-equivalent are excluded, same convention as everywhere else here:
+ *  never fabricate a rate for an asset this app has no real price for. */
+export function getAssetDistribution(snapshot: RealWalletSnapshot): AssetDistributionRow[] {
+  const totals = new Map<string, number>();
+  for (const g of snapshot.groups) {
+    for (const b of g.balances) {
+      if (b.usdEquivalent == null) continue;
+      totals.set(b.asset, (totals.get(b.asset) ?? 0) + b.usdEquivalent);
+    }
+  }
+  for (const e of snapshot.earn) {
+    if (e.usdEquivalent == null) continue;
+    totals.set(e.asset, (totals.get(e.asset) ?? 0) + e.usdEquivalent);
+  }
+  return [...totals.entries()].map(([asset, usdEquivalent]) => ({ asset, usdEquivalent })).sort((a, b) => b.usdEquivalent - a.usdEquivalent);
 }

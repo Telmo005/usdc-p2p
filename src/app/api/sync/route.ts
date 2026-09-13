@@ -15,8 +15,13 @@ function mapStatus(binanceStatus: string): string {
   if (s === 'CANCELLED' || s === 'CANCELLED_BY_SYSTEM') return 'cancelled';
   if (s === 'PENDING') return 'pending';
   if (s === 'BUYER_PAYED') return 'payment_received';
-  if (s === 'TRADING') return 'awaiting_confirmation';
-  if (s === 'APPEAL') return 'disputed';
+  // DISTRIBUTING = funds being released to the buyer, after payment but
+  // before fully closed - closest existing meaning is "in progress", same
+  // as TRADING; not a new status value.
+  if (s === 'TRADING' || s === 'DISTRIBUTING') return 'awaiting_confirmation';
+  // Binance's real documented value is IN_APPEAL, not APPEAL - this used to
+  // silently fall through to 'pending' below.
+  if (s === 'IN_APPEAL') return 'disputed';
   return 'pending';
 }
 
@@ -63,11 +68,21 @@ export async function POST() {
       counterpartyId = cp?.id ?? null;
     }
 
+    // Binance's C2C history never gives a real completion/cancellation
+    // timestamp (only createTime - confirmed against the official docs) -
+    // completed_at/cancelled_at are stamped with THIS sync's own now() the
+    // first time that status is observed, and never moved again
+    // (coalesce on conflict). An honest "we first noticed this at X," not
+    // the fabricated duplicate-of-created_at this used to be.
     const rows = await query<{ inserted: boolean }>(
       `insert into p2p_manager.orders (
          user_id, platform, external_order_id, counterparty_id, side, asset, fiat, quantity, price, total_value, fee,
-         payment_method, status, raw, created_at, completed_at
-       ) values ($1, 'binance', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, to_timestamp($14 / 1000.0), case when $12::text = 'completed' then to_timestamp($14 / 1000.0) else null end)
+         payment_method, status, raw, created_at, completed_at, cancelled_at
+       ) values (
+         $1, 'binance', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, to_timestamp($14 / 1000.0),
+         case when $12::text = 'completed' then now() else null end,
+         case when $12::text = 'cancelled' then now() else null end
+       )
        on conflict (user_id, platform, external_order_id) do update set
          counterparty_id = excluded.counterparty_id,
          quantity = excluded.quantity,
@@ -76,7 +91,8 @@ export async function POST() {
          fee = excluded.fee,
          payment_method = excluded.payment_method,
          status = excluded.status,
-         completed_at = excluded.completed_at,
+         completed_at = coalesce(p2p_manager.orders.completed_at, excluded.completed_at),
+         cancelled_at = coalesce(p2p_manager.orders.cancelled_at, excluded.cancelled_at),
          raw = excluded.raw
        returning (xmax = 0) as inserted`,
       [

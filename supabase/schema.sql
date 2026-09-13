@@ -260,6 +260,25 @@ create index if not exists market_snapshots_lookup_idx
   on p2p_manager.market_snapshots (platform, asset, fiat, side, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- account_snapshots: periodic real reads of the account's total wallet
+-- value (Spot+Funding+Earn, see lib/wallet.ts), taken by the same cron tick
+-- as market_snapshots. Shared/global like market_snapshots, not user-scoped
+-- - BINANCE_API_KEY/SECRET are a single account's credentials regardless of
+-- which `profiles` row is logged in. Feeds Análise's "evolução do
+-- patrimônio" - history only starts accumulating from whenever this table
+-- was created, never backfilled.
+-- ---------------------------------------------------------------------------
+create table if not exists p2p_manager.account_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  total_usd numeric not null,
+  total_mzn numeric,
+  total_zar numeric,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists account_snapshots_created_idx on p2p_manager.account_snapshots (created_at desc);
+
+-- ---------------------------------------------------------------------------
 -- market_trend_state: one row per tracked (platform, asset, fiat, side) pair,
 -- holding the currently-confirmed trend so the cron job can detect a genuine
 -- reversal (not just tick-to-tick noise) and avoid re-notifying every run.
@@ -339,6 +358,7 @@ alter table p2p_manager.audit_log enable row level security;
 alter table p2p_manager.sync_state enable row level security;
 alter table p2p_manager.exchange_rates enable row level security;
 alter table p2p_manager.market_snapshots enable row level security;
+alter table p2p_manager.account_snapshots enable row level security;
 alter table p2p_manager.market_trend_state enable row level security;
 alter table p2p_manager.sim_lots enable row level security;
 alter table p2p_manager.sim_sales enable row level security;
@@ -385,6 +405,9 @@ create policy exchange_rates_select on p2p_manager.exchange_rates for select usi
 
 drop policy if exists market_snapshots_select on p2p_manager.market_snapshots;
 create policy market_snapshots_select on p2p_manager.market_snapshots for select using (true);
+
+drop policy if exists account_snapshots_select on p2p_manager.account_snapshots;
+create policy account_snapshots_select on p2p_manager.account_snapshots for select using (true);
 
 drop policy if exists market_trend_state_select on p2p_manager.market_trend_state;
 create policy market_trend_state_select on p2p_manager.market_trend_state for select using (true);

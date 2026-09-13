@@ -2,17 +2,33 @@ import { ShoppingCart, TrendingUp, SlidersHorizontal, History } from 'lucide-rea
 import { requireUser } from '@/lib/auth';
 import { getMarketSeries } from '@/lib/db';
 import { getOpenLots, getPositionSummaries, getRecentSales } from '@/lib/simulation';
+import { getRealWalletSnapshot } from '@/lib/wallet';
+import { getMidRates } from '@/lib/exchangeRates';
+import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
 import { QuickSimulator } from '@/components/QuickSimulator';
 import { CurrencyCycle } from '@/components/CurrencyCycle';
 import { ProfitCalculator } from '@/components/ProfitCalculator';
+import { WalletSaleSimulator, type SellableBalance, type MarketPairWithAge } from '@/components/WalletSaleSimulator';
 import { PositionsTable, type LotRow } from '@/components/PositionsTable';
 import { AddLotForm, RecordSaleForm } from '@/components/SimulationForms';
 import { StatCard } from '@/components/StatCard';
+import { DataTag } from '@/components/DataTag';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
 
-export default async function SimulationPage() {
+export default async function SimulationPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ asset?: string; fiat?: string; wallet?: string; qty?: string; side?: string; price?: string }>;
+}) {
   const { user } = await requireUser();
+  const sp = await searchParams;
+  // Two distinct "arrived here from elsewhere" flows, distinguished by which
+  // params show up: `wallet` means "sell what I already hold" (Carteira,
+  // Phase 2); `price` without `wallet` means "plan around this specific
+  // ad's price" (Anúncios, Phase 4) - they never collide.
+  const fromAd = !sp.wallet && sp.price != null && (sp.side === 'buy' || sp.side === 'sell');
 
   const [marketSeries, lots, positions, sales] = await Promise.all([
     getMarketSeries(),
@@ -24,6 +40,31 @@ export default async function SimulationPage() {
   const marketPairs = marketSeries.map((s) => ({ asset: s.asset, fiat: s.fiat, buyPrice: s.lastBuy, sellPrice: s.lastSell }));
   const marketPrices: Record<string, { buy: number | null; sell: number | null }> = {};
   for (const s of marketSeries) marketPrices[`${s.asset}/${s.fiat}`] = { buy: s.lastBuy, sell: s.lastSell };
+
+  const marketPairsWithAge: MarketPairWithAge[] = marketSeries.map((s) => ({
+    asset: s.asset,
+    fiat: s.fiat,
+    buyPrice: s.lastBuy,
+    sellPrice: s.lastSell,
+    fetchedAt: s.ticks.length > 0 ? s.ticks[s.ticks.length - 1].t : null,
+  }));
+
+  const { mznRate, zarRate } = getMidRates(marketSeries);
+  let walletSnapshot: Awaited<ReturnType<typeof getRealWalletSnapshot>> | null = null;
+  let walletFetchError: string | null = null;
+  try {
+    walletSnapshot = await getRealWalletSnapshot(mznRate, zarRate);
+  } catch (err) {
+    walletFetchError = err instanceof Error ? err.message : 'Falha ao ler o saldo da Binance.';
+  }
+
+  const sellableBalances: SellableBalance[] = walletSnapshot
+    ? walletSnapshot.groups.flatMap((g) =>
+        g.balances
+          .filter((b) => b.quantity > 0 && TRACKED_PAIRS.some((p) => p.asset === b.asset))
+          .map((b) => ({ asset: b.asset, wallet: g.id, quantity: b.quantity }))
+      )
+    : [];
 
   const lotRows: LotRow[] = lots.map((l) => ({
     id: l.id,
@@ -59,11 +100,39 @@ export default async function SimulationPage() {
         </p>
       </div>
 
+      {walletFetchError && (
+        <ErrorBanner
+          title="Não consegui ler o saldo real da Binance"
+          message={`${walletFetchError} A simulação com saldo real fica indisponível até conseguires atualizar - as restantes ferramentas abaixo continuam a funcionar normalmente.`}
+        />
+      )}
+
+      {sellableBalances.length > 0 ? (
+        <WalletSaleSimulator
+          balances={sellableBalances}
+          marketPairs={marketPairsWithAge}
+          mznRate={mznRate}
+          zarRate={zarRate}
+          walletFetchedAt={walletSnapshot!.fetchedAt}
+          initialAsset={sp.asset}
+          initialWallet={sp.wallet}
+          initialFiat={sp.fiat}
+          initialQuantity={sp.qty ? Number(sp.qty) : undefined}
+        />
+      ) : (
+        !walletFetchError && (
+          <EmptyState
+            title="Sem saldo real disponível para simular venda"
+            description="Assim que tiveres saldo num ativo com mercado rastreado (ex.: USDT) em Spot ou Funding, aparece aqui uma simulação de venda pronta a usar - ou chega cá diretamente a partir da Carteira."
+          />
+        )
+      )}
+
       <QuickSimulator pairs={marketPairs} />
 
       <CurrencyCycle pairs={marketPairs} />
 
-      <details className="group rounded-xl border border-border bg-surface open:pb-5">
+      <details className="group rounded-xl border border-border bg-surface open:pb-5" open={fromAd}>
         <summary className="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-muted marker:hidden group-open:text-foreground">
           <span className="inline-flex items-center gap-2">
             <span className="transition group-open:rotate-90">▶</span> Calculadora avançada (planear um preço-alvo, teto de compra,
@@ -71,7 +140,13 @@ export default async function SimulationPage() {
           </span>
         </summary>
         <div className="px-5">
-          <ProfitCalculator marketPairs={marketPairs} />
+          <ProfitCalculator
+            marketPairs={marketPairs}
+            initialAsset={fromAd ? sp.asset : undefined}
+            initialFiat={fromAd ? sp.fiat : undefined}
+            initialSide={fromAd ? (sp.side as 'buy' | 'sell') : undefined}
+            initialPrice={fromAd ? Number(sp.price) : undefined}
+          />
         </div>
       </details>
 
@@ -115,11 +190,12 @@ export default async function SimulationPage() {
         title="Registar compra"
         icon={ShoppingCart}
         subtitle="Separado do histórico sincronizado da Binance - regista aqui qualquer compra (Binance, outra plataforma, dinheiro) que queiras incluir na simulação."
+        action={<DataTag source="manual" />}
       >
         <AddLotForm />
       </SectionCard>
 
-      <SectionCard title="Posições" icon={TrendingUp}>
+      <SectionCard title="Posições" icon={TrendingUp} action={<DataTag source="manual" />}>
         <PositionsTable lots={lotRows} marketPrices={marketPrices} />
       </SectionCard>
 
@@ -127,11 +203,12 @@ export default async function SimulationPage() {
         title="Registar venda"
         icon={SlidersHorizontal}
         subtitle="A quantidade vendida é consumida das compras mais antigas primeiro (FIFO). Se a quantidade ultrapassar um lote, o resto sai do lote seguinte automaticamente."
+        action={<DataTag source="manual" />}
       >
         <RecordSaleForm />
       </SectionCard>
 
-      <SectionCard title="Histórico de vendas" icon={History}>
+      <SectionCard title="Histórico de vendas" icon={History} action={<DataTag source="manual" />}>
         {sales.length === 0 ? (
           <EmptyState title="Ainda sem vendas registadas" description="Aparecem aqui assim que registares uma venda acima." />
         ) : (

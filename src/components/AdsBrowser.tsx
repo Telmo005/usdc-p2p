@@ -1,23 +1,135 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import Link from 'next/link';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
+import { DataTag } from '@/components/DataTag';
 import type { P2PAd } from '@/lib/binancePublicP2P';
 
-export type AdBook = { asset: string; fiat: string; side: 'buy' | 'sell'; ads: P2PAd[] | null; error: string | null };
+export type AdBook = { asset: string; fiat: string; side: 'buy' | 'sell'; ads: P2PAd[] | null; error: string | null; fetchedAt: number };
 
 function fmt(n: number, maxFrac = 2) {
   return n.toLocaleString('pt-PT', { maximumFractionDigits: maxFrac });
 }
 
-export function AdsBrowser({ books }: { books: AdBook[] }) {
+function AdvertiserLine({ ad }: { ad: P2PAd }) {
+  return (
+    <>
+      <div className="flex items-center gap-1.5">
+        {ad.advertiserNickname}
+        {ad.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
+      </div>
+      {(ad.advertiserOrderCount != null || ad.advertiserFinishRate != null) && (
+        <div className="text-[11px] text-muted">
+          {ad.advertiserOrderCount != null && `${ad.advertiserOrderCount} ordens/mês`}
+          {ad.advertiserOrderCount != null && ad.advertiserFinishRate != null && ' · '}
+          {ad.advertiserFinishRate != null && `${(ad.advertiserFinishRate * 100).toFixed(1)}% concluídas`}
+        </div>
+      )}
+    </>
+  );
+}
+
+function AdDetail({ ad, asset, fiat, side, counterpartyId }: { ad: P2PAd; asset: string; fiat: string; side: 'buy' | 'sell'; counterpartyId?: string }) {
+  const simulateHref = `/simulation?asset=${asset}&fiat=${fiat}&side=${side}&price=${ad.price}`;
+
+  return (
+    <div className="rounded-lg border border-border bg-background p-4 text-sm">
+      <div>
+        <div className="mb-1 text-xs uppercase tracking-wide text-muted">Descrição / termos do anunciante</div>
+        {ad.remarks ? (
+          <p className="whitespace-pre-wrap text-sm">{ad.remarks}</p>
+        ) : (
+          <p className="text-sm italic text-muted">Descrição não disponibilizada pela fonte de dados.</p>
+        )}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div>
+          <div className="text-xs text-muted">Limite mínimo</div>
+          <div className="font-mono">
+            {fmt(ad.minSingleTransAmount)} {fiat}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-muted">Limite máximo</div>
+          <div className="font-mono">
+            {fmt(ad.maxSingleTransAmount)} {fiat}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-muted">Disponível</div>
+          <div className="font-mono">
+            {fmt(ad.availableQuantity, 4)} {asset}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-muted">Tempo para pagar</div>
+          <div className="font-mono">{ad.payTimeLimitMinutes != null ? `${ad.payTimeLimitMinutes} min` : '—'}</div>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div className="mb-1 text-xs uppercase tracking-wide text-muted">Métodos de pagamento</div>
+        <div className="flex flex-wrap gap-1.5">
+          {ad.tradeMethods.map((m) => (
+            <span key={m} className="rounded-full border border-border px-2 py-0.5 text-xs">
+              {m}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div className="mb-1 text-xs uppercase tracking-wide text-muted">Comerciante</div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="font-medium">{ad.advertiserNickname}</span>
+          {ad.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
+        </div>
+        {(ad.advertiserOrderCount != null || ad.advertiserFinishRate != null) && (
+          <div className="mt-0.5 text-xs text-muted">
+            {ad.advertiserOrderCount != null && `${ad.advertiserOrderCount} ordens/mês`}
+            {ad.advertiserOrderCount != null && ad.advertiserFinishRate != null && ' · '}
+            {ad.advertiserFinishRate != null && `${(ad.advertiserFinishRate * 100).toFixed(1)}% concluídas`}
+            <span className="ml-1">(estatísticas públicas da Binance, não calculadas por nós)</span>
+          </div>
+        )}
+        {counterpartyId && (
+          <Link href={`/customers/${counterpartyId}`} className="mt-1 inline-block text-xs text-accent hover:underline">
+            Já negociaste com este comerciante → ver histórico
+          </Link>
+        )}
+      </div>
+
+      <p className="mt-3 text-[11px] text-muted">
+        Histórico deste anúncio: ainda não disponível - este sistema regista o preço agregado do mercado (ver Início), não o
+        histórico de anúncios individuais.
+      </p>
+
+      <div className="mt-3">
+        <Link
+          href={simulateHref}
+          className="inline-flex items-center rounded-lg border border-accent/50 px-3 py-1.5 text-xs text-accent hover:bg-accent/10"
+        >
+          Simular esta operação →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export function AdsBrowser({ books, counterpartyByNickname = {} }: { books: AdBook[]; counterpartyByNickname?: Record<string, string> }) {
   const pairs = [...new Set(books.map((b) => `${b.asset}/${b.fiat}`))];
   const [pair, setPair] = useState(pairs[0] ?? '');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
+  const [expandedAdvNo, setExpandedAdvNo] = useState<string | null>(null);
 
   const book = books.find((b) => `${b.asset}/${b.fiat}` === pair && b.side === side);
   const [asset, fiat] = pair.split('/');
+
+  const toggle = (advNo: string) => setExpandedAdvNo((cur) => (cur === advNo ? null : advNo));
 
   return (
     <div>
@@ -51,11 +163,14 @@ export function AdsBrowser({ books }: { books: AdBook[] }) {
           </button>
         </div>
       </div>
-      <p className="mt-2 text-xs text-muted">
-        {side === 'buy'
-          ? `Anúncios de quem está a vender ${asset} - é a estes preços que compras.`
-          : `Anúncios de quem está a comprar ${asset} - é a estes preços que vendes.`}
-      </p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted">
+          {side === 'buy'
+            ? `Anúncios de quem está a vender ${asset} - é a estes preços que compras.`
+            : `Anúncios de quem está a comprar ${asset} - é a estes preços que vendes.`}
+        </p>
+        {book && !book.error && <DataTag source="binance_public" fetchedAt={book.fetchedAt} />}
+      </div>
 
       <div className="mt-4">
         {!book || book.error ? (
@@ -68,6 +183,7 @@ export function AdsBrowser({ books }: { books: AdBook[] }) {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="text-xs uppercase tracking-wide text-muted">
+                    <th className="pb-2 pr-4"></th>
                     <th className="pb-2 pr-4">Anunciante</th>
                     <th className="pb-2 pr-4">Preço</th>
                     <th className="pb-2 pr-4">Disponível</th>
@@ -76,72 +192,86 @@ export function AdsBrowser({ books }: { books: AdBook[] }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {book.ads.map((ad) => (
-                    <tr key={ad.advNo} className="border-t border-border">
-                      <td className="py-2 pr-4">
-                        <div className="flex items-center gap-1.5">
-                          {ad.advertiserNickname}
-                          {ad.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
-                        </div>
-                        {(ad.advertiserOrderCount != null || ad.advertiserFinishRate != null) && (
-                          <div className="text-[11px] text-muted">
-                            {ad.advertiserOrderCount != null && `${ad.advertiserOrderCount} ordens/mês`}
-                            {ad.advertiserOrderCount != null && ad.advertiserFinishRate != null && ' · '}
-                            {ad.advertiserFinishRate != null && `${(ad.advertiserFinishRate * 100).toFixed(1)}% concluídas`}
-                          </div>
+                  {book.ads.map((ad) => {
+                    const expanded = expandedAdvNo === ad.advNo;
+                    return (
+                      <Fragment key={ad.advNo}>
+                        <tr onClick={() => toggle(ad.advNo)} className="cursor-pointer border-t border-border hover:bg-surface-raised">
+                          <td className="w-6 py-2 pl-1 text-muted">{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
+                          <td className="py-2 pr-4">
+                            <AdvertiserLine ad={ad} />
+                          </td>
+                          <td className="py-2 pr-4 font-mono font-semibold text-accent">
+                            {fmt(ad.price, 4)} {fiat}
+                          </td>
+                          <td className="py-2 pr-4 font-mono">
+                            {fmt(ad.availableQuantity, 4)} {asset}
+                          </td>
+                          <td className="py-2 pr-4 font-mono text-xs">
+                            {fmt(ad.minSingleTransAmount)} - {fmt(ad.maxSingleTransAmount)} {fiat}
+                          </td>
+                          <td className="py-2 text-xs">{ad.tradeMethods.join(', ')}</td>
+                        </tr>
+                        {expanded && (
+                          <tr>
+                            <td colSpan={6} className="pb-3 pt-1">
+                              <AdDetail ad={ad} asset={asset} fiat={fiat} side={side} counterpartyId={counterpartyByNickname[ad.advertiserNickname]} />
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="py-2 pr-4 font-mono font-semibold text-accent">
-                        {fmt(ad.price, 4)} {fiat}
-                      </td>
-                      <td className="py-2 pr-4 font-mono">
-                        {fmt(ad.availableQuantity, 4)} {asset}
-                      </td>
-                      <td className="py-2 pr-4 font-mono text-xs">
-                        {fmt(ad.minSingleTransAmount)} - {fmt(ad.maxSingleTransAmount)} {fiat}
-                      </td>
-                      <td className="py-2 text-xs">{ad.tradeMethods.join(', ')}</td>
-                    </tr>
-                  ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
             <div className="flex flex-col gap-2 md:hidden">
-              {book.ads.map((ad) => (
-                <div key={ad.advNo} className="rounded-lg border border-border p-3 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 text-sm font-medium">
-                      {ad.advertiserNickname}
-                      {ad.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
-                    </span>
-                    <span className="font-mono font-semibold text-accent">
-                      {fmt(ad.price, 4)} {fiat}
-                    </span>
+              {book.ads.map((ad) => {
+                const expanded = expandedAdvNo === ad.advNo;
+                return (
+                  <div key={ad.advNo} className="rounded-lg border border-border text-xs">
+                    <button type="button" onClick={() => toggle(ad.advNo)} className="flex w-full flex-col gap-1 p-3 text-left">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5 text-sm font-medium">
+                          {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                          {ad.advertiserNickname}
+                          {ad.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
+                        </span>
+                        <span className="font-mono font-semibold text-accent">
+                          {fmt(ad.price, 4)} {fiat}
+                        </span>
+                      </div>
+                      {(ad.advertiserOrderCount != null || ad.advertiserFinishRate != null) && (
+                        <div className="text-muted">
+                          {ad.advertiserOrderCount != null && `${ad.advertiserOrderCount} ordens/mês`}
+                          {ad.advertiserOrderCount != null && ad.advertiserFinishRate != null && ' · '}
+                          {ad.advertiserFinishRate != null && `${(ad.advertiserFinishRate * 100).toFixed(1)}% concluídas`}
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                        <div>
+                          <span className="text-muted">Disponível: </span>
+                          {fmt(ad.availableQuantity, 4)} {asset}
+                        </div>
+                        <div>
+                          <span className="text-muted">Limites: </span>
+                          {fmt(ad.minSingleTransAmount)}-{fmt(ad.maxSingleTransAmount)}
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-muted">Pagamento: </span>
+                          {ad.tradeMethods.join(', ')}
+                        </div>
+                      </div>
+                    </button>
+                    {expanded && (
+                      <div className="border-t border-border p-3">
+                        <AdDetail ad={ad} asset={asset} fiat={fiat} side={side} counterpartyId={counterpartyByNickname[ad.advertiserNickname]} />
+                      </div>
+                    )}
                   </div>
-                  {(ad.advertiserOrderCount != null || ad.advertiserFinishRate != null) && (
-                    <div className="mt-1 text-muted">
-                      {ad.advertiserOrderCount != null && `${ad.advertiserOrderCount} ordens/mês`}
-                      {ad.advertiserOrderCount != null && ad.advertiserFinishRate != null && ' · '}
-                      {ad.advertiserFinishRate != null && `${(ad.advertiserFinishRate * 100).toFixed(1)}% concluídas`}
-                    </div>
-                  )}
-                  <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
-                    <div>
-                      <span className="text-muted">Disponível: </span>
-                      {fmt(ad.availableQuantity, 4)} {asset}
-                    </div>
-                    <div>
-                      <span className="text-muted">Limites: </span>
-                      {fmt(ad.minSingleTransAmount)}-{fmt(ad.maxSingleTransAmount)}
-                    </div>
-                    <div className="col-span-2">
-                      <span className="text-muted">Pagamento: </span>
-                      {ad.tradeMethods.join(', ')}
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}

@@ -80,6 +80,20 @@ export type CustomerDetail = CustomerSummary & {
   }>;
 };
 
+/**
+ * Nickname -> counterparty id, for every real counterparty this user has
+ * ever traded with. Binance's public P2P ad book only gives a nickname per
+ * advertiser (no stable public id) - this lets the Anúncios page honestly
+ * say "já negociaste com este comerciante" when (and only when) a live ad's
+ * nickname matches someone from real, synced trade history.
+ */
+export async function getCounterpartyNicknameMap(userId: string): Promise<Record<string, string>> {
+  const rows = await query<{ id: string; nickname: string }>(`select id, nickname from p2p_manager.counterparties where user_id = $1`, [userId]);
+  const map: Record<string, string> = {};
+  for (const r of rows) map[r.nickname] = r.id;
+  return map;
+}
+
 export async function getCustomerDetail(userId: string, counterpartyId: string): Promise<CustomerDetail | null> {
   const summaries = await getCustomerSummaries(userId);
   const summary = summaries.find((c) => c.id === counterpartyId);

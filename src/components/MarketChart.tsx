@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { MarketSeries } from '@/lib/db';
+import { DataTag } from '@/components/DataTag';
 
 const RANGES = [
   { label: '1h', ms: 3600_000 },
@@ -75,14 +76,18 @@ export function MarketChart({ series }: { series: MarketSeries }) {
 
   const gradCompra = `gradCompra-${series.asset}-${series.fiat}`;
   const gradVenda = `gradVenda-${series.asset}-${series.fiat}`;
+  const latestTickMs = series.ticks.length > 0 ? series.ticks[series.ticks.length - 1].t : null;
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold">
-            {series.asset}/{series.fiat}
-          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold">
+              {series.asset}/{series.fiat}
+            </h3>
+            <DataTag source="binance_public" fetchedAt={latestTickMs} />
+          </div>
           <p className="text-xs text-muted">Anúncios P2P reais (Binance) · média dos 5 melhores por lado</p>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -101,6 +106,14 @@ export function MarketChart({ series }: { series: MarketSeries }) {
               <span className="text-muted">Spread</span>
               <span className="font-mono font-semibold text-accent">
                 {spread.toFixed(2)} ({spreadPct!.toFixed(2)}%)
+              </span>
+            </div>
+          )}
+          {(series.lastBuyDepth != null || series.lastSellDepth != null) && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted">Anúncios</span>
+              <span className="font-mono font-semibold">
+                {series.lastBuyDepth ?? '-'} compra · {series.lastSellDepth ?? '-'} venda
               </span>
             </div>
           )}

@@ -76,21 +76,49 @@ export type Order = {
   completed_at: string | null;
 };
 
-/** Every KPI the Dashboard needs, in one round trip - all scoped to `userId`. */
+export type OrderDetail = Order & {
+  cancelled_at: string | null;
+  counterparty_id: string | null;
+  counterparty_nickname: string | null;
+};
+
+/** One order plus its counterparty's real nickname (if any) - for the
+ *  order detail page. Scoped to `userId` like everything else here, so a
+ *  bogus/other-user id resolves to null (page shows notFound()). */
+export async function getOrderDetail(userId: string, id: string): Promise<OrderDetail | null> {
+  const [row] = await query<OrderDetail>(
+    `select o.id, o.platform, o.external_order_id, o.side, o.asset, o.fiat, o.quantity, o.price, o.total_value, o.fee,
+            o.payment_method, o.status, o.created_at, o.completed_at, o.cancelled_at, o.counterparty_id,
+            c.nickname as counterparty_nickname
+     from p2p_manager.orders o
+     left join p2p_manager.counterparties c on c.id = o.counterparty_id
+     where o.user_id = $1 and o.id = $2`,
+    [userId, id]
+  );
+  return row ?? null;
+}
+
+/** Every KPI the Dashboard needs, in one round trip - all scoped to `userId`.
+ *  Deliberately does NOT return a cross-fiat buy/sell/profit total - MZN and
+ *  ZAR orders can't be summed into one meaningful number (see
+ *  `getAnalytics` in lib/analytics.ts, which does this correctly, per fiat,
+ *  for Análise). This is current-state/operational data only; trading
+ *  performance lives on Análise. */
 export async function getDashboardSummary(userId: string) {
-  const [totals] = await query<{
-    total_buy: string | null;
-    total_sell: string | null;
-    completed_count: string;
-    pending_count: string;
-  }>(
+  const [totals] = await query<{ completed_count: string; pending_count: string }>(
     `select
-       coalesce(sum(total_value) filter (where side = 'buy' and status = 'completed'), 0) as total_buy,
-       coalesce(sum(total_value) filter (where side = 'sell' and status = 'completed'), 0) as total_sell,
        count(*) filter (where status = 'completed') as completed_count,
        count(*) filter (where status not in ('completed', 'cancelled', 'expired')) as pending_count
      from p2p_manager.orders
      where user_id = $1`,
+    [userId]
+  );
+
+  const committedValueByFiat = await query<{ fiat: string; total: string }>(
+    `select fiat, coalesce(sum(total_value), 0) as total
+     from p2p_manager.orders
+     where user_id = $1 and status not in ('completed', 'cancelled', 'expired')
+     group by fiat`,
     [userId]
   );
 
@@ -117,15 +145,10 @@ export async function getDashboardSummary(userId: string) {
     [userId]
   );
 
-  const totalBuy = Number(totals?.total_buy ?? 0);
-  const totalSell = Number(totals?.total_sell ?? 0);
-
   return {
-    totalBuy,
-    totalSell,
-    grossProfit: totalSell - totalBuy,
     completedCount: Number(totals?.completed_count ?? 0),
     pendingCount: Number(totals?.pending_count ?? 0),
+    committedValueByFiat: committedValueByFiat.map((r) => ({ fiat: r.fiat, total: Number(r.total) })),
     recentOrders,
     attentionOrders,
     lastSync: lastSync ?? null,
@@ -143,6 +166,8 @@ export type MarketSeries = {
   sellTrend: 'up' | 'down' | null;
   lastBuy: number | null;
   lastSell: number | null;
+  lastBuyDepth: number | null;
+  lastSellDepth: number | null;
 };
 
 /**
@@ -160,8 +185,8 @@ export async function getMarketSeries(hours = 168): Promise<MarketSeries[]> {
   // avg_top_price (mean of the 5 best ads), not best_price - see the same
   // note in lib/marketAnalysis.ts on why a single top ad is too noisy to
   // chart or feed into trend detection on its own.
-  const snapshots = await query<{ asset: string; fiat: string; side: 'buy' | 'sell'; avg_top_price: string; created_at: string }>(
-    `select asset, fiat, side, avg_top_price, created_at
+  const snapshots = await query<{ asset: string; fiat: string; side: 'buy' | 'sell'; avg_top_price: string; sample_size: number; created_at: string }>(
+    `select asset, fiat, side, avg_top_price, sample_size, created_at
      from p2p_manager.market_snapshots
      where platform = 'binance' and created_at > now() - ($1 || ' hours')::interval
      order by created_at asc`,
@@ -182,13 +207,16 @@ export async function getMarketSeries(hours = 168): Promise<MarketSeries[]> {
   const BUCKET_MS = 60_000;
   const key = (asset: string, fiat: string) => `${asset}/${fiat}`;
   const buckets = new Map<string, Map<number, MarketTick>>();
-  const meta = new Map<string, { buyTrend: 'up' | 'down' | null; sellTrend: 'up' | 'down' | null; lastBuy: number | null; lastSell: number | null }>();
+  const meta = new Map<
+    string,
+    { buyTrend: 'up' | 'down' | null; sellTrend: 'up' | 'down' | null; lastBuy: number | null; lastSell: number | null; lastBuyDepth: number | null; lastSellDepth: number | null }
+  >();
   const reversals = new Map<string, MarketReversal[]>();
 
   for (const row of snapshots) {
     const k = key(row.asset, row.fiat);
     if (!buckets.has(k)) buckets.set(k, new Map());
-    if (!meta.has(k)) meta.set(k, { buyTrend: null, sellTrend: null, lastBuy: null, lastSell: null });
+    if (!meta.has(k)) meta.set(k, { buyTrend: null, sellTrend: null, lastBuy: null, lastSell: null, lastBuyDepth: null, lastSellDepth: null });
 
     const bucketT = Math.round(new Date(row.created_at).getTime() / BUCKET_MS) * BUCKET_MS;
     const series = buckets.get(k)!;
@@ -197,8 +225,13 @@ export async function getMarketSeries(hours = 168): Promise<MarketSeries[]> {
     series.get(bucketT)![row.side] = price;
 
     const m = meta.get(k)!;
-    if (row.side === 'buy') m.lastBuy = price;
-    else m.lastSell = price;
+    if (row.side === 'buy') {
+      m.lastBuy = price;
+      m.lastBuyDepth = row.sample_size;
+    } else {
+      m.lastSell = price;
+      m.lastSellDepth = row.sample_size;
+    }
   }
 
   for (const row of trendRows) {
@@ -232,8 +265,85 @@ export async function getMarketSeries(hours = 168): Promise<MarketSeries[]> {
       sellTrend: m.sellTrend,
       lastBuy: m.lastBuy,
       lastSell: m.lastSell,
+      lastBuyDepth: m.lastBuyDepth,
+      lastSellDepth: m.lastSellDepth,
     };
   });
+}
+
+/** Market data has no per-user sync_state row (market_snapshots is global,
+ *  unlike orders) - freshness is just the newest snapshot's timestamp. */
+export async function getMarketFreshness(): Promise<{ lastCheckedAt: string | null }> {
+  const [row] = await query<{ last: string | null }>(`select max(created_at) as last from p2p_manager.market_snapshots`);
+  return { lastCheckedAt: row?.last ?? null };
+}
+
+export type AccountValuePoint = { t: number; totalUsd: number; totalMzn: number | null; totalZar: number | null };
+
+/**
+ * Real account-value history from p2p_manager.account_snapshots (see
+ * lib/wallet.ts's recordAccountSnapshot, written by the market-sync cron).
+ * Global/shared, not user-scoped - one real Binance account. History only
+ * exists from whenever that table started being written to - a short span
+ * here means the feature is new, not that data is missing/broken.
+ */
+export async function getAccountSnapshots(days: number): Promise<AccountValuePoint[]> {
+  const rows = await query<{ total_usd: string; total_mzn: string | null; total_zar: string | null; created_at: string }>(
+    `select total_usd, total_mzn, total_zar, created_at
+     from p2p_manager.account_snapshots
+     where created_at > now() - ($1 || ' days')::interval
+     order by created_at asc`,
+    [days]
+  );
+  return rows.map((r) => ({
+    t: new Date(r.created_at).getTime(),
+    totalUsd: Number(r.total_usd),
+    totalMzn: r.total_mzn != null ? Number(r.total_mzn) : null,
+    totalZar: r.total_zar != null ? Number(r.total_zar) : null,
+  }));
+}
+
+export type ActivityItem =
+  | { kind: 'order'; id: string; t: string; side: 'buy' | 'sell'; asset: string; quantity: string; status: string }
+  | { kind: 'movement'; id: string; t: string; type: string; asset: string; amount: string }
+  | { kind: 'notification'; id: string; t: string; title: string };
+
+/**
+ * Recent activity from every source this app genuinely tracks today: real
+ * synced orders, the personal wallet-movements notebook, and notifications
+ * (e.g. market-trend alerts from lib/marketAnalysis.ts). Deliberately not
+ * the full spec timeline (ads observed, price ticks, syncs, errors...) -
+ * this app doesn't log those as discrete events yet, and inventing entries
+ * for them here would be exactly the kind of fabricated data this project
+ * rules out. Three cheap queries merged in JS, not a SQL UNION - the row
+ * shapes are too different to union cleanly.
+ */
+export async function getRecentActivity(userId: string, limit = 15): Promise<ActivityItem[]> {
+  const [orders, movements, notifications] = await Promise.all([
+    query<{ id: string; side: 'buy' | 'sell'; asset: string; quantity: string; status: string; created_at: string }>(
+      `select id, side, asset, quantity, status, created_at from p2p_manager.orders
+       where user_id = $1 order by created_at desc limit $2`,
+      [userId, limit]
+    ),
+    query<{ id: string; type: string; asset: string; amount: string; created_at: string }>(
+      `select id, type, asset, amount, created_at from p2p_manager.wallet_movements
+       where user_id = $1 order by created_at desc limit $2`,
+      [userId, limit]
+    ),
+    query<{ id: string; title: string; created_at: string }>(
+      `select id, title, created_at from p2p_manager.notifications
+       where user_id = $1 order by created_at desc limit $2`,
+      [userId, limit]
+    ),
+  ]);
+
+  const items: ActivityItem[] = [
+    ...orders.map((o): ActivityItem => ({ kind: 'order', id: o.id, t: o.created_at, side: o.side, asset: o.asset, quantity: o.quantity, status: o.status })),
+    ...movements.map((m): ActivityItem => ({ kind: 'movement', id: m.id, t: m.created_at, type: m.type, asset: m.asset, amount: m.amount })),
+    ...notifications.map((n): ActivityItem => ({ kind: 'notification', id: n.id, t: n.created_at, title: n.title })),
+  ];
+
+  return items.sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime()).slice(0, limit);
 }
 
 export type AppNotification = {

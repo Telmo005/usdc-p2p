@@ -5,6 +5,7 @@ export const NAV_ITEMS = [
   { href: '/simulation', label: 'Simulação', icon: '🧮' },
   { href: '/wallet', label: 'Carteira', icon: '💰' },
   { href: '/analytics', label: 'Análise', icon: '📊' },
-  { href: '/customers', label: 'Clientes', icon: '👥' },
+  { href: '/opportunities', label: 'Oportunidades', icon: '🎯' },
+  { href: '/customers', label: 'Contrapartes', icon: '👥' },
   { href: '/settings', label: 'Configurações', icon: '⚙️' },
 ] as const;

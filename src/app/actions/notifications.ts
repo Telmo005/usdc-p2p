@@ -9,3 +9,9 @@ export async function markAllNotificationsRead() {
   await query(`update p2p_manager.notifications set read_at = now() where user_id = $1 and read_at is null`, [user.id]);
   revalidatePath('/', 'layout');
 }
+
+export async function markNotificationRead(notificationId: string) {
+  const { user } = await requireUser();
+  await query(`update p2p_manager.notifications set read_at = now() where id = $1 and user_id = $2 and read_at is null`, [notificationId, user.id]);
+  revalidatePath('/', 'layout');
+}

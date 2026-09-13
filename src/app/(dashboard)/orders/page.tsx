@@ -1,8 +1,14 @@
+import { ListChecks } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { StatusBadge } from '@/components/StatusBadge';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ORDER_STATUS_CONFIG, ORDER_STATUSES } from '@/lib/orderStatus';
 
-const STATUSES = ['all', 'pending', 'awaiting_payment', 'payment_received', 'awaiting_confirmation', 'completed', 'cancelled', 'expired', 'disputed'] as const;
+const STATUS_LABEL: Record<string, string> = { all: 'Todas' };
+for (const [key, cfg] of Object.entries(ORDER_STATUS_CONFIG)) STATUS_LABEL[key] = cfg.label;
+const STATUSES = ORDER_STATUSES;
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const { user } = await requireUser();
@@ -47,14 +53,21 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
               filter === s ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-foreground'
             }`}
           >
-            {s === 'all' ? 'Todas' : s}
+            {STATUS_LABEL[s]}
           </a>
         ))}
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5">
+      <SectionCard
+        title={filter === 'all' ? 'Todas as ordens' : STATUS_LABEL[filter]}
+        icon={ListChecks}
+        subtitle={rows.length > 0 ? `${rows.length} ordem${rows.length === 1 ? '' : 's'}${rows.length === 200 ? ' (limite de 200 mostradas)' : ''}` : undefined}
+      >
         {rows.length === 0 ? (
-          <p className="text-sm text-muted">Nenhuma ordem encontrada para este filtro. Sincroniza no Início para importar o teu histórico.</p>
+          <EmptyState
+            title="Nenhuma ordem encontrada"
+            description={filter === 'all' ? 'Sincroniza no Início para importares o teu histórico real da Binance.' : 'Não há ordens com este estado. Experimenta outro filtro.'}
+          />
         ) : (
           <>
             <div className="hidden overflow-x-auto md:block">
@@ -133,7 +146,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
             </div>
           </>
         )}
-      </div>
+      </SectionCard>
     </div>
   );
 }

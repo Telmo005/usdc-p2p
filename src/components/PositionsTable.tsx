@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { computeProfit, requiredSellPrice } from '@/lib/profitCalculator';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 export type LotRow = {
   id: string;
@@ -22,7 +23,7 @@ export function PositionsTable({ lots, marketPrices }: { lots: LotRow[]; marketP
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold">Posições abertas</h3>
+        <span className="text-xs text-muted">Posições abertas (compras registadas ainda não totalmente vendidas)</span>
         <label className="flex items-center gap-2 text-xs text-muted">
           Lucro mínimo desejado
           <input
@@ -37,7 +38,9 @@ export function PositionsTable({ lots, marketPrices }: { lots: LotRow[]; marketP
       </div>
 
       {lots.length === 0 ? (
-        <p className="mt-3 text-sm text-muted">Ainda não registaste nenhuma compra para simulação.</p>
+        <div className="mt-3">
+          <EmptyState title="Ainda sem posições abertas" description="Regista uma compra acima para começares a acompanhar o lucro." />
+        </div>
       ) : (
         (() => {
           const computed = lots.map((lot) => {

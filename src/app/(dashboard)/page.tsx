@@ -1,10 +1,14 @@
 import Link from 'next/link';
+import { ShoppingCart, DollarSign, Scale, Clock, AlertTriangle, Calculator, ListChecks, Wallet, Megaphone, BarChart3 } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { getDashboardSummary, getMarketSeries } from '@/lib/db';
 import { StatCard } from '@/components/StatCard';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SyncButton } from '@/components/SyncButton';
 import { MarketChart } from '@/components/MarketChart';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
 
 function fmtMoney(n: number, currency: string) {
   return `${n.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
@@ -27,43 +31,53 @@ export default async function DashboardPage() {
         <SyncButton />
       </div>
 
-      {summary.lastSync?.last_error && (
-        <div className="rounded-xl border border-negative/40 bg-negative/10 px-4 py-3 text-sm text-negative">
-          Última sincronização falhou: {summary.lastSync.last_error}
-        </div>
-      )}
+      {summary.lastSync?.last_error && <ErrorBanner title="Última sincronização falhou" message={summary.lastSync.last_error} />}
 
       {!hasAnyOrder && (
-        <div className="rounded-xl border border-border bg-surface px-5 py-4 text-sm text-muted">
-          Ainda não existem operações para apresentar. Carrega em <span className="text-foreground">Sincronizar agora</span> para
-          importar o teu histórico real da Binance.
+        <EmptyState
+          icon={ListChecks}
+          title="Ainda sem operações para mostrar"
+          description='Carrega em "Sincronizar agora" para importar o teu histórico real da Binance.'
+        />
+      )}
+
+      {marketSeries.length > 0 && (
+        <div className="flex flex-col gap-4">
+          {marketSeries.map((series) => (
+            <MarketChart key={`${series.asset}-${series.fiat}`} series={series} />
+          ))}
         </div>
       )}
 
-      <div className="flex flex-col gap-4">
-        {marketSeries.map((series) => (
-          <MarketChart key={`${series.asset}-${series.fiat}`} series={series} />
-        ))}
-      </div>
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total comprado" value={fmtMoney(summary.totalBuy, fiat)} sub={`${summary.completedCount} operações concluídas`} />
-        <StatCard label="Total vendido" value={fmtMoney(summary.totalSell, fiat)} />
         <StatCard
+          icon={ShoppingCart}
+          label="Total comprado"
+          value={fmtMoney(summary.totalBuy, fiat)}
+          sub={`${summary.completedCount} operações concluídas`}
+        />
+        <StatCard icon={DollarSign} label="Total vendido" value={fmtMoney(summary.totalSell, fiat)} />
+        <StatCard
+          icon={Scale}
           label="Lucro bruto"
           value={fmtMoney(summary.grossProfit, fiat)}
           tone={summary.grossProfit >= 0 ? 'positive' : 'negative'}
           sub="Vendas − compras, sem taxas ainda deduzidas"
         />
-        <StatCard label="Ordens pendentes" value={String(summary.pendingCount)} sub={summary.pendingCount > 0 ? 'Precisam da tua atenção' : 'Tudo em dia'} />
+        <StatCard
+          icon={Clock}
+          label="Ordens pendentes"
+          value={String(summary.pendingCount)}
+          tone={summary.pendingCount > 0 ? undefined : 'positive'}
+          sub={summary.pendingCount > 0 ? 'Precisam da tua atenção' : 'Tudo em dia'}
+        />
       </div>
 
       {summary.attentionOrders.length > 0 && (
-        <section className="rounded-xl border border-accent/40 bg-accent/5 p-5">
-          <h2 className="text-sm font-semibold text-accent">⚠️ Atenção necessária</h2>
-          <ul className="mt-3 flex flex-col gap-2">
+        <SectionCard title="Atenção necessária" icon={AlertTriangle} className="border-accent/40 bg-accent/5">
+          <ul className="flex flex-col gap-2">
             {summary.attentionOrders.map((o) => (
-              <li key={o.id} className="flex items-center justify-between text-sm">
+              <li key={o.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span>
                   {o.side === 'buy' ? 'Compra' : 'Venda'} de {o.quantity} {o.asset} · {o.external_order_id}
                 </span>
@@ -71,22 +85,23 @@ export default async function DashboardPage() {
               </li>
             ))}
           </ul>
-        </section>
+        </SectionCard>
       )}
 
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Últimas ordens</h2>
+      <SectionCard
+        title="Últimas ordens"
+        icon={ListChecks}
+        action={
           <Link href="/orders" className="text-xs text-accent hover:underline">
             Ver todas as ordens →
           </Link>
-        </div>
-
+        }
+      >
         {summary.recentOrders.length === 0 ? (
-          <p className="mt-4 text-sm text-muted">Sem ordens ainda.</p>
+          <EmptyState title="Sem ordens ainda" description="Sincroniza para importares o teu histórico real da Binance." />
         ) : (
           <>
-            <div className="mt-4 hidden overflow-x-auto md:block">
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="text-xs uppercase tracking-wide text-muted">
@@ -121,7 +136,7 @@ export default async function DashboardPage() {
               </table>
             </div>
 
-            <div className="mt-4 flex flex-col gap-3 md:hidden">
+            <div className="flex flex-col gap-3 md:hidden">
               {summary.recentOrders.map((o) => (
                 <div key={o.id} className="rounded-lg border border-border p-3">
                   <div className="flex items-center justify-between gap-2">
@@ -153,27 +168,28 @@ export default async function DashboardPage() {
             </div>
           </>
         )}
-      </section>
+      </SectionCard>
 
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold">Ações rápidas</h2>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <QuickAction href="/simulation" label="Simular lucro" />
-          <QuickAction href="/ads" label="Criar anúncio" />
-          <QuickAction href="/orders" label="Ver ordens" />
-          <QuickAction href="/ads" label="Ver anúncios" />
-          <QuickAction href="/analytics" label="Analisar mercado" />
-          <QuickAction href="/wallet" label="Ver carteira" />
-          <QuickAction href="/analytics" label="Gerar relatório" />
+      <SectionCard title="Ações rápidas" muted>
+        <div className="flex flex-wrap gap-2">
+          <QuickAction href="/simulation" label="Simular lucro" icon={Calculator} />
+          <QuickAction href="/orders" label="Ver ordens" icon={ListChecks} />
+          <QuickAction href="/wallet" label="Ver carteira" icon={Wallet} />
+          <QuickAction href="/ads" label="Ver anúncios" icon={Megaphone} />
+          <QuickAction href="/analytics" label="Ver análise" icon={BarChart3} />
         </div>
-      </section>
+      </SectionCard>
     </div>
   );
 }
 
-function QuickAction({ href, label }: { href: string; label: string }) {
+function QuickAction({ href, label, icon: Icon }: { href: string; label: string; icon: typeof Calculator }) {
   return (
-    <Link href={href} className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:border-accent hover:text-accent">
+    <Link
+      href={href}
+      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:border-accent hover:text-accent"
+    >
+      <Icon size={14} />
       {label}
     </Link>
   );

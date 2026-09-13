@@ -1,5 +1,8 @@
+import { UserCircle, Link2, Construction } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
 
 export default async function SettingsPage() {
   const { user, profile } = await requireUser();
@@ -16,36 +19,36 @@ export default async function SettingsPage() {
         <p className="mt-1 text-sm text-muted">Conta e ligação com a Binance.</p>
       </div>
 
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold">Conta</h2>
-        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+      <SectionCard title="Conta" icon={UserCircle}>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
           <dt className="text-muted">Nome</dt>
           <dd>{profile?.full_name ?? '—'}</dd>
           <dt className="text-muted">Email</dt>
-          <dd>{user.email}</dd>
+          <dd className="truncate">{user.email}</dd>
           <dt className="text-muted">Perfil</dt>
           <dd className="capitalize">{profile?.role ?? 'trader'}</dd>
           <dt className="text-muted">Moeda de referência</dt>
           <dd>{profile?.reference_currency ?? 'MZN'}</dd>
         </dl>
-      </section>
+      </SectionCard>
 
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold">Sincronização com a Binance</h2>
-        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+      <SectionCard title="Sincronização com a Binance" icon={Link2}>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
           <dt className="text-muted">Última sincronização</dt>
           <dd>{syncRow?.last_synced_at ? new Date(syncRow.last_synced_at).toLocaleString('pt-PT') : 'Nunca'}</dd>
           <dt className="text-muted">Estado</dt>
           <dd className={syncRow?.last_error ? 'text-negative' : 'text-positive'}>{syncRow?.last_error ? 'Erro' : 'OK'}</dd>
         </dl>
         {syncRow?.last_error && (
-          <div className="mt-3 rounded-lg border border-negative/40 bg-negative/10 p-3 text-xs text-negative">{syncRow.last_error}</div>
+          <div className="mt-3">
+            <ErrorBanner message={syncRow.last_error} />
+          </div>
         )}
-      </section>
+      </SectionCard>
 
-      <section className="rounded-xl border border-border bg-surface p-5 text-sm text-muted">
-        Métodos de pagamento, notificações e alertas personalizados ficam para a próxima fase.
-      </section>
+      <SectionCard title="Em breve" icon={Construction} muted>
+        <p className="text-sm text-muted">Métodos de pagamento, notificações e alertas personalizados ficam para a próxima fase.</p>
+      </SectionCard>
     </div>
   );
 }

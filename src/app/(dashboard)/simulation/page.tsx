@@ -1,3 +1,4 @@
+import { ShoppingCart, TrendingUp, SlidersHorizontal, History } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { getMarketSeries } from '@/lib/db';
 import { getOpenLots, getPositionSummaries, getRecentSales } from '@/lib/simulation';
@@ -7,6 +8,8 @@ import { ProfitCalculator } from '@/components/ProfitCalculator';
 import { PositionsTable, type LotRow } from '@/components/PositionsTable';
 import { AddLotForm, RecordSaleForm } from '@/components/SimulationForms';
 import { StatCard } from '@/components/StatCard';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 export default async function SimulationPage() {
   const { user } = await requireUser();
@@ -34,12 +37,17 @@ export default async function SimulationPage() {
     createdAt: l.created_at,
   }));
 
-  const totalUnrealized = positions.reduce((sum, p) => {
+  // Kept per-fiat throughout - summing MZN and ZAR profit into one number
+  // would be meaningless (they're different currencies).
+  const unrealizedByFiat = new Map<string, number>();
+  for (const p of positions) {
     const sell = marketPrices[`${p.asset}/${p.fiat}`]?.sell;
-    if (sell == null) return sum;
-    return sum + (p.quantityOpen * sell - p.totalCostBasis);
-  }, 0);
-  const totalRealized = sales.reduce((sum, s) => sum + Number(s.realized_profit), 0);
+    if (sell == null) continue;
+    unrealizedByFiat.set(p.fiat, (unrealizedByFiat.get(p.fiat) ?? 0) + (p.quantityOpen * sell - p.totalCostBasis));
+  }
+  const realizedByFiat = new Map<string, number>();
+  for (const s of sales) realizedByFiat.set(s.fiat, (realizedByFiat.get(s.fiat) ?? 0) + Number(s.realized_profit));
+  const fiats = [...new Set([...unrealizedByFiat.keys(), ...realizedByFiat.keys()])];
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -67,53 +75,68 @@ export default async function SimulationPage() {
         </div>
       </details>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Quantidade em aberto" value={positions.length === 0 ? '—' : positions.map((p) => `${p.quantityOpen} ${p.asset}`).join(', ')} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
-          label="Lucro não realizado (a preço de mercado)"
-          value={positions.length === 0 ? '—' : `${totalUnrealized.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          tone={totalUnrealized >= 0 ? 'positive' : 'negative'}
+          label="Quantidade em aberto"
+          value={positions.length === 0 ? '—' : positions.map((p) => `${p.quantityOpen} ${p.asset}`).join(', ')}
         />
-        <StatCard
-          label="Lucro já realizado (vendas registadas)"
-          value={`${totalRealized.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          tone={totalRealized >= 0 ? 'positive' : 'negative'}
-        />
+        {fiats.length <= 1 ? (
+          <StatCard
+            label="Lucro não realizado + realizado"
+            value={
+              fiats.length === 0
+                ? '—'
+                : `${((unrealizedByFiat.get(fiats[0]) ?? 0) + (realizedByFiat.get(fiats[0]) ?? 0)).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${fiats[0]}`
+            }
+            tone={fiats.length === 0 ? undefined : (unrealizedByFiat.get(fiats[0]) ?? 0) + (realizedByFiat.get(fiats[0]) ?? 0) >= 0 ? 'positive' : 'negative'}
+            sub={fiats.length === 1 ? `não realizado ${(unrealizedByFiat.get(fiats[0]) ?? 0).toFixed(2)} · realizado ${(realizedByFiat.get(fiats[0]) ?? 0).toFixed(2)}` : undefined}
+          />
+        ) : (
+          <div className="rounded-xl border border-border bg-surface p-5">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted">Lucro por moeda</div>
+            <div className="mt-2 flex flex-col gap-1.5">
+              {fiats.map((fiat) => {
+                const total = (unrealizedByFiat.get(fiat) ?? 0) + (realizedByFiat.get(fiat) ?? 0);
+                return (
+                  <div key={fiat} className="flex items-center justify-between text-sm">
+                    <span className="text-muted">{fiat}</span>
+                    <span className={`font-mono font-semibold ${total >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      {total.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {fiat}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold">Registar compra</h2>
-        <p className="mt-1 text-xs text-muted">
-          Separado do histórico sincronizado da Binance - regista aqui qualquer compra (Binance, outra plataforma, dinheiro) que
-          queiras incluir na simulação.
-        </p>
-        <div className="mt-4">
-          <AddLotForm />
-        </div>
-      </section>
+      <SectionCard
+        title="Registar compra"
+        icon={ShoppingCart}
+        subtitle="Separado do histórico sincronizado da Binance - regista aqui qualquer compra (Binance, outra plataforma, dinheiro) que queiras incluir na simulação."
+      >
+        <AddLotForm />
+      </SectionCard>
 
-      <section className="rounded-xl border border-border bg-surface p-5">
+      <SectionCard title="Posições" icon={TrendingUp}>
         <PositionsTable lots={lotRows} marketPrices={marketPrices} />
-      </section>
+      </SectionCard>
 
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold">Registar venda</h2>
-        <p className="mt-1 text-xs text-muted">
-          A quantidade vendida é consumida das compras mais antigas primeiro (FIFO). Se a quantidade ultrapassar um lote, o
-          resto sai do lote seguinte automaticamente.
-        </p>
-        <div className="mt-4">
-          <RecordSaleForm />
-        </div>
-      </section>
+      <SectionCard
+        title="Registar venda"
+        icon={SlidersHorizontal}
+        subtitle="A quantidade vendida é consumida das compras mais antigas primeiro (FIFO). Se a quantidade ultrapassar um lote, o resto sai do lote seguinte automaticamente."
+      >
+        <RecordSaleForm />
+      </SectionCard>
 
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold">Histórico de vendas</h2>
+      <SectionCard title="Histórico de vendas" icon={History}>
         {sales.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">Ainda sem vendas registadas.</p>
+          <EmptyState title="Ainda sem vendas registadas" description="Aparecem aqui assim que registares uma venda acima." />
         ) : (
           <>
-            <div className="mt-3 hidden overflow-x-auto md:block">
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="text-xs uppercase tracking-wide text-muted">
@@ -142,7 +165,7 @@ export default async function SimulationPage() {
               </table>
             </div>
 
-            <div className="mt-3 flex flex-col gap-2 md:hidden">
+            <div className="flex flex-col gap-2 md:hidden">
               {sales.map((s) => (
                 <div key={s.id} className="rounded-lg border border-border p-3 text-xs">
                   <div className="flex items-center justify-between gap-2">
@@ -159,7 +182,7 @@ export default async function SimulationPage() {
             </div>
           </>
         )}
-      </section>
+      </SectionCard>
     </div>
   );
 }

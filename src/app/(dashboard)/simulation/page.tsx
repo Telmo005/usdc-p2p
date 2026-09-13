@@ -1,6 +1,8 @@
 import { requireUser } from '@/lib/auth';
 import { getMarketSeries } from '@/lib/db';
 import { getOpenLots, getPositionSummaries, getRecentSales } from '@/lib/simulation';
+import { QuickSimulator } from '@/components/QuickSimulator';
+import { CurrencyCycle } from '@/components/CurrencyCycle';
 import { ProfitCalculator } from '@/components/ProfitCalculator';
 import { PositionsTable, type LotRow } from '@/components/PositionsTable';
 import { AddLotForm, RecordSaleForm } from '@/components/SimulationForms';
@@ -49,7 +51,21 @@ export default async function SimulationPage() {
         </p>
       </div>
 
-      <ProfitCalculator marketPairs={marketPairs} />
+      <QuickSimulator pairs={marketPairs} />
+
+      <CurrencyCycle pairs={marketPairs} />
+
+      <details className="group rounded-xl border border-border bg-surface open:pb-5">
+        <summary className="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-muted marker:hidden group-open:text-foreground">
+          <span className="inline-flex items-center gap-2">
+            <span className="transition group-open:rotate-90">▶</span> Calculadora avançada (planear um preço-alvo, teto de compra,
+            quantidade)
+          </span>
+        </summary>
+        <div className="px-5">
+          <ProfitCalculator marketPairs={marketPairs} />
+        </div>
+      </details>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="Quantidade em aberto" value={positions.length === 0 ? '—' : positions.map((p) => `${p.quantityOpen} ${p.asset}`).join(', ')} />

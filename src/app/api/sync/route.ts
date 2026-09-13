@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { query } from '@/lib/db';
 import { fetchAllC2COrders, type BinanceC2COrder } from '@/lib/binancePrivateClient';
+import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus';
+
+// Status transitions worth an automatic ORDERS notification (spec section
+// 13) - not every change (e.g. pending -> awaiting_confirmation is routine
+// progress, not something worth interrupting the user for).
+const NOTIFIABLE_STATUSES = new Set(['completed', 'cancelled', 'disputed']);
 
 /**
  * Manual "Sincronizar agora" - pulls the real Binance C2C order history and
@@ -44,6 +50,12 @@ export async function POST() {
        on conflict (user_id, platform, resource) do update set last_error = excluded.last_error, last_synced_at = excluded.last_synced_at`,
       [user.id, message]
     );
+    // SYSTEM notification, not just the Settings error banner - visible in
+    // the bell/Alert Center even if the user never opens Configurações.
+    await query(
+      `insert into p2p_manager.notifications (user_id, type, title, body) values ($1, 'sync_failed', $2, $3)`,
+      [user.id, 'Sincronização de ordens falhou', message]
+    );
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
@@ -52,6 +64,12 @@ export async function POST() {
 
   for (const o of orders) {
     const status = mapStatus(o.orderStatus);
+
+    const [existing] = await query<{ status: string }>(
+      `select status from p2p_manager.orders where user_id = $1 and platform = 'binance' and external_order_id = $2`,
+      [user.id, o.orderNumber]
+    );
+    const oldStatus = existing?.status ?? null;
 
     // Binance's C2C history only gives a nickname for the other side, no
     // stable counterparty id - the nickname itself is the best identity key
@@ -114,6 +132,17 @@ export async function POST() {
     );
     if (rows[0]?.inserted) inserted += 1;
     else updated += 1;
+
+    // ORDERS notification (spec section 13) - only for a real transition
+    // this sync just observed, never on first insert (that's not a
+    // "change", it's the order simply appearing for the first time).
+    if (oldStatus != null && oldStatus !== status && NOTIFIABLE_STATUSES.has(status)) {
+      const label = ORDER_STATUS_CONFIG[status]?.label ?? status;
+      await query(
+        `insert into p2p_manager.notifications (user_id, type, title, body) values ($1, 'order_status', $2, $3)`,
+        [user.id, `Ordem ${o.orderNumber}: ${label}`, `${o.tradeType === 'BUY' ? 'Compra' : 'Venda'} de ${o.amount} ${o.asset} - estado mudou para "${label}".`]
+      );
+    }
   }
 
   await query(

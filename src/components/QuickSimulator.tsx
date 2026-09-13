@@ -2,25 +2,32 @@
 
 import { useMemo, useState } from 'react';
 import { DataTag } from '@/components/DataTag';
+import { getMPesaWithdrawalFee } from '@/lib/mpesaFees';
 
 type Pair = { asset: string; fiat: string; buyPrice: number | null; sellPrice: number | null };
 
-export function QuickSimulator({ pairs }: { pairs: Pair[] }) {
+export function QuickSimulator({ pairs, initialAmount }: { pairs: Pair[]; initialAmount?: number }) {
   const usable = pairs.filter((p) => p.buyPrice != null && p.sellPrice != null);
   const [pairIdx, setPairIdx] = useState(0);
-  const [amount, setAmount] = useState('1000');
+  const [amount, setAmount] = useState(String(initialAmount ?? 1000));
+  // Most sellers in this market are M-Pesa agents requiring cash withdrawal
+  // to pay them (real ad requirement, not a guess) - that withdrawal has a
+  // real, tiered fee, a genuine buy-side cost. Only makes sense for MZN.
+  const [useMpesaFee, setUseMpesaFee] = useState(true);
 
   const pair = usable[pairIdx];
   const invest = Number(amount);
+  const mpesaApplicable = pair?.fiat === 'MZN';
 
   const result = useMemo(() => {
     if (!pair || !(invest > 0)) return null;
     const qty = invest / pair.buyPrice!;
     const proceeds = qty * pair.sellPrice!;
-    const profit = proceeds - invest;
+    const mpesaFee = mpesaApplicable && useMpesaFee ? getMPesaWithdrawalFee(invest) : 0;
+    const profit = proceeds - invest - mpesaFee;
     const profitPct = (profit / invest) * 100;
-    return { qty, proceeds, profit, profitPct };
-  }, [pair, invest]);
+    return { qty, proceeds, mpesaFee, profit, profitPct };
+  }, [pair, invest, mpesaApplicable, useMpesaFee]);
 
   if (usable.length === 0) {
     return (
@@ -68,6 +75,13 @@ export function QuickSimulator({ pairs }: { pairs: Pair[] }) {
         )}
       </div>
 
+      {mpesaApplicable && (
+        <label className="mt-3 flex items-center gap-2 text-xs text-muted">
+          <input type="checkbox" checked={useMpesaFee} onChange={(e) => setUseMpesaFee(e.target.checked)} className="accent-accent" />
+          Descontar taxa real de levantamento M-Pesa (a maioria dos anunciantes exige-a para pagares em numerário)
+        </label>
+      )}
+
       {result && (
         <div className="mt-5 rounded-lg border border-border bg-background p-4">
           <div className="mb-3 flex justify-end">
@@ -98,6 +112,9 @@ export function QuickSimulator({ pairs }: { pairs: Pair[] }) {
                 {result.profitPct >= 0 ? '+' : ''}
                 {result.profitPct.toFixed(2)}%)
               </div>
+              {result.mpesaFee > 0 && (
+                <div className="text-xs text-muted">inclui {result.mpesaFee.toLocaleString('pt-PT')} {pair.fiat} de taxa de levantamento M-Pesa</div>
+              )}
             </div>
           </div>
         </div>

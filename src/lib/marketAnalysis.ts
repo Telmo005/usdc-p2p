@@ -1,7 +1,6 @@
 import { query } from '@/lib/db';
 import { fetchP2PSnapshot } from '@/lib/binancePublicP2P';
 import { sendPush } from '@/lib/messagingClient';
-import { evaluateAlerts } from '@/lib/alerts';
 
 /**
  * The pairs this app actively tracks. USDT/MZN is the user's primary market;
@@ -230,15 +229,22 @@ export async function getMarketAnalysis(days: number): Promise<MarketAnalysisPai
 }
 
 export type MarketSyncResult = {
-  checked: Array<{ asset: string; fiat: string; side: Side; price: number | null }>;
+  checked: Array<{ asset: string; fiat: string; side: Side; price: number | null; sampleSize: number | null }>;
+  spreads: Array<{ asset: string; fiat: string; spreadPct: number | null }>;
+  liquidity: Array<{ asset: string; fiat: string; side: Side; sampleSize: number | null }>;
   reversals: ReversalEvent[];
   errors: string[];
 };
 
-/** Runs one full tick: snapshot every tracked pair/side, feed the trend
- *  state machine, notify on confirmed reversals. Called by the market-sync
- *  cron route. Safe to call as often as needed - every call is one real,
- *  independent market read, nothing is cached or simulated. */
+/**
+ * Runs one full tick: snapshot every tracked pair/side, feed the trend
+ * state machine, notify on confirmed reversals. Called by the market-sync
+ * cron route, which also calls lib/alerts.ts's evaluateAlerts() itself
+ * afterwards (not from in here - the route is the only place with both
+ * this result and the account snapshot delta alerts need). Safe to call as
+ * often as needed - every call is one real, independent market read,
+ * nothing is cached or simulated.
+ */
 export async function runMarketSync(): Promise<MarketSyncResult> {
   const platform = 'binance';
   const checked: MarketSyncResult['checked'] = [];
@@ -250,7 +256,7 @@ export async function runMarketSync(): Promise<MarketSyncResult> {
       try {
         const snapshot = await fetchP2PSnapshot(asset, fiat, side);
         if (!snapshot) {
-          checked.push({ asset, fiat, side, price: null });
+          checked.push({ asset, fiat, side, price: null, sampleSize: null });
           continue;
         }
 
@@ -265,7 +271,7 @@ export async function runMarketSync(): Promise<MarketSyncResult> {
         // otherwise swing the whole signal. Seen in practice on USDT/ZAR:
         // best_price 18 vs avg_top_price 16.65, a single ad far from the
         // rest of the book.
-        checked.push({ asset, fiat, side, price: snapshot.avgTopPrice });
+        checked.push({ asset, fiat, side, price: snapshot.avgTopPrice, sampleSize: snapshot.sampleSize });
 
         const reversal = await processTick(platform, asset, fiat, side, snapshot.avgTopPrice);
         if (reversal) {
@@ -278,11 +284,14 @@ export async function runMarketSync(): Promise<MarketSyncResult> {
     }
   }
 
-  try {
-    await evaluateAlerts(checked);
-  } catch (err) {
-    errors.push(`alerts: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const spreads: MarketSyncResult['spreads'] = TRACKED_PAIRS.map(({ asset, fiat }) => {
+    const buy = checked.find((c) => c.asset === asset && c.fiat === fiat && c.side === 'buy')?.price;
+    const sell = checked.find((c) => c.asset === asset && c.fiat === fiat && c.side === 'sell')?.price;
+    const spreadPct = buy != null && sell != null && buy > 0 ? ((sell - buy) / buy) * 100 : null;
+    return { asset, fiat, spreadPct };
+  });
 
-  return { checked, reversals, errors };
+  const liquidity: MarketSyncResult['liquidity'] = checked.map((c) => ({ asset: c.asset, fiat: c.fiat, side: c.side, sampleSize: c.sampleSize }));
+
+  return { checked, spreads, liquidity, reversals, errors };
 }

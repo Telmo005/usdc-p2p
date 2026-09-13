@@ -17,6 +17,7 @@ import { getDashboardSummary, getMarketFreshness, getMarketSeries, getRecentActi
 import { getRealWalletSnapshot, getAssetDistribution, type WalletBalance } from '@/lib/wallet';
 import { getMidRates } from '@/lib/exchangeRates';
 import { getOpportunities } from '@/lib/opportunities';
+import { fromProfile } from '@/lib/capitalSettings';
 import { formatAge } from '@/lib/dataQuality';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SyncButton } from '@/components/SyncButton';
@@ -92,13 +93,13 @@ function ActivityRow({ item }: { item: ActivityItem }) {
 
 export default async function DashboardPage() {
   const { user, profile } = await requireUser();
+  const capitalSettings = fromProfile(profile);
 
-  const [summary, marketSeries, marketFreshness, recentActivity, opportunitiesResult] = await Promise.all([
+  const [summary, marketSeries, marketFreshness, recentActivity] = await Promise.all([
     getDashboardSummary(user.id),
     getMarketSeries(),
     getMarketFreshness(),
     getRecentActivity(user.id, 15),
-    getOpportunities(),
   ]);
 
   const { mznRate, zarRate } = getMidRates(marketSeries);
@@ -110,6 +111,7 @@ export default async function DashboardPage() {
     walletFetchError = err instanceof Error ? err.message : 'Falha ao ler o saldo da Binance.';
   }
   const assetDistribution = walletSnapshot ? getAssetDistribution(walletSnapshot).slice(0, 5) : [];
+  const opportunitiesResult = await getOpportunities(capitalSettings, walletSnapshot?.totalMzn ?? null);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">

@@ -19,8 +19,8 @@ function fmtRand(mznPerRand: number) {
  * disconnected what-ifs. All ZAR/MZN rates are shown the way this market
  * actually quotes the Rand: "R1 = X MZN".
  */
-export function CurrencyCycle({ pairs }: { pairs: Pair[] }) {
-  const [amount, setAmount] = useState('1000');
+export function CurrencyCycle({ pairs, initialAmount }: { pairs: Pair[]; initialAmount?: number }) {
+  const [amount, setAmount] = useState(String(initialAmount ?? 1000));
 
   const mzn = pairs.find((p) => p.fiat === 'MZN' && p.buyPrice != null && p.sellPrice != null);
   const zar = pairs.find((p) => p.fiat === 'ZAR' && p.buyPrice != null && p.sellPrice != null);

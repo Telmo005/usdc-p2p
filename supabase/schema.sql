@@ -18,6 +18,17 @@ create table if not exists p2p_manager.profiles (
   created_at timestamptz not null default now()
 );
 
+-- Capital/cost preferences (spec section 19) - table predates these
+-- columns, explicit ALTERs so they land on the already-deployed database
+-- too. Safe defaults (0 costs, real-balance reference) so nothing changes
+-- for anyone until they actually open Configurações.
+alter table p2p_manager.profiles add column if not exists capital_reference_mode text not null default 'real' check (capital_reference_mode in ('real', 'manual'));
+alter table p2p_manager.profiles add column if not exists capital_reference_amount numeric not null default 1000;
+alter table p2p_manager.profiles add column if not exists trade_fee_pct numeric not null default 0;
+alter table p2p_manager.profiles add column if not exists conversion_cost_pct numeric not null default 0;
+alter table p2p_manager.profiles add column if not exists external_cost_fixed numeric not null default 0;
+alter table p2p_manager.profiles add column if not exists safety_margin_pct numeric not null default 0;
+
 -- Auto-create a profile row whenever a new user signs up. Fully qualified
 -- names + fixed search_path throughout (security definer best practice) -
 -- never relies on the caller's search_path.
@@ -227,6 +238,11 @@ create table if not exists p2p_manager.sync_state (
   last_error text,
   unique (user_id, platform, resource)
 );
+
+-- Edge-trigger bookkeeping for the "dados antigos" SYSTEM alert (orders
+-- sync gone stale) - same is_triggered-style pattern as p2p_manager.alerts,
+-- so the cron only notifies once per staleness episode, not every tick.
+alter table p2p_manager.sync_state add column if not exists stale_sync_notified_at timestamptz;
 
 -- ---------------------------------------------------------------------------
 -- exchange_rates: small shared reference cache, not user-scoped

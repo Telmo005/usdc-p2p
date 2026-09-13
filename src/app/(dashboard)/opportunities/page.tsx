@@ -1,6 +1,10 @@
 import { Target } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
+import { getMarketSeries } from '@/lib/db';
+import { getRealWalletSnapshot } from '@/lib/wallet';
+import { getMidRates } from '@/lib/exchangeRates';
 import { getOpportunities } from '@/lib/opportunities';
+import { fromProfile } from '@/lib/capitalSettings';
 import { OpportunityCard } from '@/components/OpportunityCard';
 import { SectionCard } from '@/components/ui/SectionCard';
 
@@ -9,8 +13,21 @@ function fmt(n: number, maxFrac = 2) {
 }
 
 export default async function OpportunitiesPage() {
-  await requireUser();
-  const { opportunities, monitoredCyclePct, monitoredPairs } = await getOpportunities();
+  const { profile } = await requireUser();
+  const capitalSettings = fromProfile(profile);
+
+  const marketSeries = await getMarketSeries();
+  const { mznRate, zarRate } = getMidRates(marketSeries);
+  let realTotalMzn: number | null = null;
+  try {
+    const walletSnapshot = await getRealWalletSnapshot(mznRate, zarRate);
+    realTotalMzn = walletSnapshot.totalMzn;
+  } catch {
+    // Wallet read failed - getOpportunities falls back to the manual
+    // reference amount, same as when referenceMode is 'manual'.
+  }
+
+  const { opportunities, monitoredCyclePct, monitoredPairs } = await getOpportunities(capitalSettings, realTotalMzn);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">

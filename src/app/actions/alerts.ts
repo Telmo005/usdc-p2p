@@ -26,12 +26,28 @@ export async function createAlertAction(_prev: AlertActionState, formData: FormD
     condition = { kind: 'price', asset, fiat, side, operator, threshold };
   } else if (kind === 'cycle') {
     condition = { kind: 'cycle', operator, threshold };
+  } else if (kind === 'spread') {
+    const asset = String(formData.get('asset') ?? 'USDT');
+    const fiat = String(formData.get('fiat') ?? '').trim().toUpperCase();
+    if (!fiat) return { error: 'Indica a moeda.' };
+    condition = { kind: 'spread', asset, fiat, operator, threshold };
+  } else if (kind === 'liquidity') {
+    const asset = String(formData.get('asset') ?? 'USDT');
+    const fiat = String(formData.get('fiat') ?? '').trim().toUpperCase();
+    const side = String(formData.get('side') ?? '') as 'buy' | 'sell';
+    if (!fiat) return { error: 'Indica a moeda.' };
+    if (!['buy', 'sell'].includes(side)) return { error: 'Indica compra ou venda.' };
+    condition = { kind: 'liquidity', asset, fiat, side, operator, threshold };
+  } else if (kind === 'account_balance') {
+    condition = { kind: 'account_balance', operator, threshold };
+  } else if (kind === 'account_change_pct') {
+    condition = { kind: 'account_change_pct', operator, threshold };
   } else {
     return { error: 'Tipo de alerta inválido.' };
   }
 
   await createAlert(user.id, condition);
-  revalidatePath('/settings');
+  revalidatePath('/alerts');
   return { success: 'Alerta criado.' };
 }
 
@@ -40,12 +56,12 @@ export async function toggleAlertAction(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '');
   const active = formData.get('active') === 'true';
   await setAlertActive(user.id, id, active);
-  revalidatePath('/settings');
+  revalidatePath('/alerts');
 }
 
 export async function deleteAlertAction(formData: FormData): Promise<void> {
   const { user } = await requireUser();
   const id = String(formData.get('id') ?? '');
   await deleteAlert(user.id, id);
-  revalidatePath('/settings');
+  revalidatePath('/alerts');
 }

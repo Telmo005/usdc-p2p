@@ -1,10 +1,11 @@
-import { UserCircle, Link2, BellRing } from 'lucide-react';
+import Link from 'next/link';
+import { UserCircle, Link2, BellRing, Coins } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
-import { query, getMarketSeries } from '@/lib/db';
-import { getUserAlerts } from '@/lib/alerts';
+import { query } from '@/lib/db';
+import { fromProfile } from '@/lib/capitalSettings';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
-import { AlertsPanel } from '@/components/AlertsPanel';
+import { CapitalSettingsForm } from '@/components/CapitalSettingsForm';
 
 export default async function SettingsPage() {
   const { user, profile } = await requireUser();
@@ -14,14 +15,11 @@ export default async function SettingsPage() {
     [user.id]
   );
 
-  const [alerts, marketSeries] = await Promise.all([getUserAlerts(user.id), getMarketSeries()]);
-  const marketPairs = marketSeries.map((s) => ({ asset: s.asset, fiat: s.fiat, buyPrice: s.lastBuy, sellPrice: s.lastSell }));
-
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <div>
         <h1 className="text-xl font-bold">Configurações</h1>
-        <p className="mt-1 text-sm text-muted">Conta, ligação com a Binance e alertas.</p>
+        <p className="mt-1 text-sm text-muted">Conta, ligação com a Binance e capital.</p>
       </div>
 
       <SectionCard title="Conta" icon={UserCircle}>
@@ -52,15 +50,20 @@ export default async function SettingsPage() {
       </SectionCard>
 
       <SectionCard
-        title="Alertas personalizados"
-        icon={BellRing}
-        subtitle="Avaliados a cada corrida da sincronização de mercado, com base nos preços P2P reais. Avisa quando o preço de um par passar de um valor, ou quando surgir uma janela real de arbitragem no ciclo MZN⇄ZAR."
+        title="Configuração de Capital"
+        icon={Coins}
+        subtitle="Custos reais e capital de referência - usados para calcular resultados líquidos honestos no Opportunity Center e na Simulação. Deixados em zero, nada muda em relação ao comportamento atual."
       >
-        {marketPairs.length === 0 ? (
-          <p className="text-sm text-muted">Ainda sem dados de mercado suficientes para criar alertas.</p>
-        ) : (
-          <AlertsPanel alerts={alerts} pairs={marketPairs} />
-        )}
+        <CapitalSettingsForm settings={fromProfile(profile)} fiat={profile?.reference_currency ?? 'MZN'} />
+      </SectionCard>
+
+      <SectionCard title="Alertas" icon={BellRing} muted>
+        <p className="text-sm text-muted">
+          Alertas de mercado/conta e avisos automáticos de sistema/ordens mudaram-se para um espaço próprio.
+        </p>
+        <Link href="/alerts" className="mt-2 inline-block text-sm text-accent hover:underline">
+          Ir para o Centro de Alertas →
+        </Link>
       </SectionCard>
     </div>
   );

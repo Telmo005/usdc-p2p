@@ -3,47 +3,47 @@
 import { useActionState, useState } from 'react';
 import { Bell, BellOff, Trash2 } from 'lucide-react';
 import { createAlertAction, toggleAlertAction, deleteAlertAction, type AlertActionState } from '@/app/actions/alerts';
-import type { Alert } from '@/lib/alerts';
+import { describeCondition } from '@/lib/alertDescriptions';
+import type { Alert, AlertCondition } from '@/lib/alerts';
 
 type Pair = { asset: string; fiat: string; buyPrice: number | null; sellPrice: number | null };
+type Kind = AlertCondition['kind'];
 
-function describeAlert(a: Alert): string {
-  const cmp = a.condition.operator === 'gte' ? '≥' : '≤';
-  if (a.condition.kind === 'price') {
-    const c = a.condition;
-    return `${c.asset}/${c.fiat} (${c.side === 'buy' ? 'compra' : 'venda'}) ${cmp} ${c.threshold}`;
-  }
-  return `Ciclo MZN⇄ZAR ${cmp} ${a.condition.threshold}%`;
-}
+const KIND_LABEL: Record<Kind, string> = {
+  price: 'Preço de um par',
+  cycle: 'Ciclo de arbitragem MZN⇄ZAR',
+  spread: 'Spread de um par',
+  liquidity: 'Liquidez (nº de anúncios)',
+  account_balance: 'Saldo total abaixo de um limite',
+  account_change_pct: 'Variação inesperada do saldo',
+};
 
-function CreateAlertForm({ pairs }: { pairs: Pair[] }) {
+function CreateAlertForm({ pairs, kinds }: { pairs: Pair[]; kinds: Kind[] }) {
   const [state, action, pending] = useActionState<AlertActionState, FormData>(createAlertAction, undefined);
-  const [kind, setKind] = useState<'price' | 'cycle'>('price');
+  const [kind, setKind] = useState<Kind>(kinds[0]);
   const [pairIdx, setPairIdx] = useState(0);
   const pair = pairs[pairIdx];
+  const needsPair = kind === 'price' || kind === 'spread' || kind === 'liquidity';
+  const needsSide = kind === 'price' || kind === 'liquidity';
 
   return (
     <form action={action} className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => setKind('price')}
-          className={`rounded-full border px-3 py-1.5 text-xs ${kind === 'price' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-foreground'}`}
-        >
-          Preço de um par
-        </button>
-        <button
-          type="button"
-          onClick={() => setKind('cycle')}
-          className={`rounded-full border px-3 py-1.5 text-xs ${kind === 'cycle' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-foreground'}`}
-        >
-          Ciclo de arbitragem MZN⇄ZAR
-        </button>
+        {kinds.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setKind(k)}
+            className={`rounded-full border px-3 py-1.5 text-xs ${kind === k ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-foreground'}`}
+          >
+            {KIND_LABEL[k]}
+          </button>
+        ))}
       </div>
       <input type="hidden" name="kind" value={kind} />
 
-      {kind === 'price' ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {needsPair && (
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="text-xs text-muted">Par</span>
             <select
@@ -60,6 +60,8 @@ function CreateAlertForm({ pairs }: { pairs: Pair[] }) {
             <input type="hidden" name="asset" value={pair?.asset ?? 'USDT'} />
             <input type="hidden" name="fiat" value={pair?.fiat ?? ''} />
           </label>
+        )}
+        {needsSide && (
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="text-xs text-muted">Lado</span>
             <select name="side" className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent">
@@ -67,55 +69,43 @@ function CreateAlertForm({ pairs }: { pairs: Pair[] }) {
               <option value="buy">Compra</option>
             </select>
           </label>
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="text-xs text-muted">Condição</span>
-            <select name="operator" className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent">
-              <option value="gte">≥ maior ou igual a</option>
-              <option value="lte">≤ menor ou igual a</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="text-xs text-muted">Valor ({pair?.fiat ?? '-'})</span>
-            <input
-              name="threshold"
-              type="number"
-              step="any"
-              required
-              defaultValue={pair?.sellPrice?.toFixed(2) ?? ''}
-              className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent"
-            />
-          </label>
-          {pair && (
-            <p className="col-span-2 text-xs text-muted sm:col-span-4">
-              Preço atual: compra {pair.buyPrice?.toFixed(2) ?? '-'} · venda {pair.sellPrice?.toFixed(2) ?? '-'} {pair.fiat}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="text-xs text-muted">Condição</span>
-            <select name="operator" className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent">
-              <option value="gte">≥ maior ou igual a</option>
-              <option value="lte">≤ menor ou igual a</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="text-xs text-muted">Eficiência do ciclo (%)</span>
-            <input
-              name="threshold"
-              type="number"
-              step="any"
-              required
-              defaultValue="0"
-              className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent"
-            />
-          </label>
-          <p className="col-span-2 text-xs text-muted sm:col-span-4">
-            0% = avisa assim que ida e volta (MZN→USDT→ZAR→USDT→MZN) deixar de dar prejuízo - uma janela real de arbitragem.
-          </p>
-        </div>
+        )}
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="text-xs text-muted">Condição</span>
+          <select name="operator" className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent">
+            <option value="gte">≥ maior ou igual a</option>
+            <option value="lte">≤ menor ou igual a</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="text-xs text-muted">
+            {kind === 'price' && `Valor (${pair?.fiat ?? '-'})`}
+            {kind === 'cycle' && 'Eficiência do ciclo (%)'}
+            {kind === 'spread' && 'Spread (%)'}
+            {kind === 'liquidity' && 'Nº de anúncios'}
+            {kind === 'account_balance' && 'Saldo (MZN)'}
+            {kind === 'account_change_pct' && 'Variação (%)'}
+          </span>
+          <input
+            name="threshold"
+            type="number"
+            step="any"
+            required
+            defaultValue={kind === 'price' ? (pair?.sellPrice?.toFixed(2) ?? '') : kind === 'cycle' ? '0' : ''}
+            className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent"
+          />
+        </label>
+      </div>
+
+      {kind === 'price' && pair && (
+        <p className="text-xs text-muted">
+          Preço atual: compra {pair.buyPrice?.toFixed(2) ?? '-'} · venda {pair.sellPrice?.toFixed(2) ?? '-'} {pair.fiat}
+        </p>
       )}
+      {kind === 'cycle' && (
+        <p className="text-xs text-muted">0% = avisa assim que ida e volta (MZN→USDT→ZAR→USDT→MZN) deixar de dar prejuízo - uma janela real de arbitragem.</p>
+      )}
+      {kind === 'account_change_pct' && <p className="text-xs text-muted">Compara com a leitura anterior (cada corrida da sincronização de mercado, ~10 min).</p>}
 
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className="w-fit rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60">
@@ -128,16 +118,18 @@ function CreateAlertForm({ pairs }: { pairs: Pair[] }) {
   );
 }
 
-export function AlertsPanel({ alerts, pairs }: { alerts: Alert[]; pairs: Pair[] }) {
+export function AlertsPanel({ alerts, pairs, kinds }: { alerts: Alert[]; pairs: Pair[]; kinds: Kind[] }) {
+  const relevant = alerts.filter((a) => kinds.includes(a.condition.kind));
+
   return (
     <div className="flex flex-col gap-4">
-      <CreateAlertForm pairs={pairs} />
+      <CreateAlertForm pairs={pairs} kinds={kinds} />
 
-      {alerts.length === 0 ? (
+      {relevant.length === 0 ? (
         <p className="text-sm text-muted">Ainda sem alertas criados.</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {alerts.map((a) => (
+          {relevant.map((a) => (
             <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
               <div className="flex items-center gap-2">
                 {a.active ? (
@@ -150,7 +142,7 @@ export function AlertsPanel({ alerts, pairs }: { alerts: Alert[]; pairs: Pair[] 
                   </span>
                 )}
                 <div>
-                  <div className={a.active ? '' : 'text-muted line-through'}>{describeAlert(a)}</div>
+                  <div className={a.active ? '' : 'text-muted line-through'}>{describeCondition(a.condition)}</div>
                   <div className="text-[11px] text-muted">
                     {a.is_triggered && a.active ? 'condição ativa agora' : a.last_triggered_at ? `último disparo: ${new Date(a.last_triggered_at).toLocaleString('pt-PT')}` : 'ainda não disparou'}
                   </div>

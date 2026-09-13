@@ -303,6 +303,25 @@ export async function getAccountSnapshots(days: number): Promise<AccountValuePoi
   }));
 }
 
+/** The `limit` most recent account snapshots, newest first - for the
+ *  ACCOUNT alert types (Phase 9), which need "current vs. previous" rather
+ *  than a time-windowed series. */
+export async function getLatestAccountSnapshots(limit: number): Promise<AccountValuePoint[]> {
+  const rows = await query<{ total_usd: string; total_mzn: string | null; total_zar: string | null; created_at: string }>(
+    `select total_usd, total_mzn, total_zar, created_at
+     from p2p_manager.account_snapshots
+     order by created_at desc
+     limit $1`,
+    [limit]
+  );
+  return rows.map((r) => ({
+    t: new Date(r.created_at).getTime(),
+    totalUsd: Number(r.total_usd),
+    totalMzn: r.total_mzn != null ? Number(r.total_mzn) : null,
+    totalZar: r.total_zar != null ? Number(r.total_zar) : null,
+  }));
+}
+
 export type ActivityItem =
   | { kind: 'order'; id: string; t: string; side: 'buy' | 'sell'; asset: string; quantity: string; status: string }
   | { kind: 'movement'; id: string; t: string; type: string; asset: string; amount: string }
@@ -380,18 +399,31 @@ export async function getUserNotifications(userId: string, limit = 20): Promise<
  * for them. Lazily create a default one on first access here instead of
  * leaving them stuck with a null profile.
  */
-export async function getProfile(userId: string, fallbackEmail?: string | null) {
-  const [profile] = await query<{ id: string; full_name: string | null; role: string; reference_currency: string }>(
-    `select id, full_name, role, reference_currency from p2p_manager.profiles where id = $1`,
-    [userId]
-  );
+export type Profile = {
+  id: string;
+  full_name: string | null;
+  role: string;
+  reference_currency: string;
+  capital_reference_mode: 'real' | 'manual';
+  capital_reference_amount: string;
+  trade_fee_pct: string;
+  conversion_cost_pct: string;
+  external_cost_fixed: string;
+  safety_margin_pct: string;
+};
+
+const PROFILE_COLUMNS = `id, full_name, role, reference_currency, capital_reference_mode, capital_reference_amount,
+                          trade_fee_pct, conversion_cost_pct, external_cost_fixed, safety_margin_pct`;
+
+export async function getProfile(userId: string, fallbackEmail?: string | null): Promise<Profile | null> {
+  const [profile] = await query<Profile>(`select ${PROFILE_COLUMNS} from p2p_manager.profiles where id = $1`, [userId]);
   if (profile) return profile;
 
-  const [created] = await query<{ id: string; full_name: string | null; role: string; reference_currency: string }>(
+  const [created] = await query<Profile>(
     `insert into p2p_manager.profiles (id, full_name)
      values ($1, $2)
      on conflict (id) do update set id = excluded.id
-     returning id, full_name, role, reference_currency`,
+     returning ${PROFILE_COLUMNS}`,
     [userId, fallbackEmail ?? null]
   );
   return created ?? null;

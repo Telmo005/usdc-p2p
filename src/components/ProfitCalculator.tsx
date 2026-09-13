@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { computeProfit, maxBuyPrice, requiredQuantityForProfitAmount, requiredSellPrice } from '@/lib/profitCalculator';
+import { getMPesaWithdrawalFee } from '@/lib/mpesaFees';
 import { DataTag } from '@/components/DataTag';
 
 type Mode = 'sellPrice' | 'buyPrice' | 'profit' | 'quantity';
@@ -49,6 +50,12 @@ export function ProfitCalculator({
     const v = Number(s);
     return Number.isFinite(v) ? v : NaN;
   };
+
+  // Most sellers in this market are M-Pesa agents requiring cash withdrawal
+  // to pay them (real ad requirement) - a real, tiered buy-side cost, only
+  // relevant in MZN. Suggested from the amount currently in the form, not
+  // auto-applied - the user still decides whether it fits their trade.
+  const mpesaSuggestedFee = fiat === 'MZN' && n(quantity) > 0 && n(buyPrice) > 0 ? getMPesaWithdrawalFee(n(quantity) * n(buyPrice)) : null;
 
   const applyMarketPrice = (pair: { asset: string; fiat: string; buyPrice: number | null; sellPrice: number | null }) => {
     setAsset(pair.asset);
@@ -162,7 +169,24 @@ export function ProfitCalculator({
         ) : (
           <NumField label="Lucro mínimo (%)" value={minProfitPct} onChange={setMinProfitPct} disabled={mode === 'profit'} />
         )}
-        <NumField label={`Taxa de compra (${fiat})`} value={buyFee} onChange={setBuyFee} small />
+        <NumField
+          label={`Taxa de compra (${fiat})`}
+          value={buyFee}
+          onChange={setBuyFee}
+          small
+          tag={
+            mpesaSuggestedFee != null && mpesaSuggestedFee > 0 ? (
+              <button
+                type="button"
+                onClick={() => setBuyFee(String(mpesaSuggestedFee))}
+                className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted hover:border-accent hover:text-accent"
+                title="Taxa real de levantamento M-Pesa para este valor (Vodafone M-Pesa, tarifário em vigor)"
+              >
+                M-Pesa: {mpesaSuggestedFee} MZN
+              </button>
+            ) : undefined
+          }
+        />
         <NumField label={`Taxa de venda (${fiat})`} value={sellFee} onChange={setSellFee} small />
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="text-xs text-muted">Ativo</span>

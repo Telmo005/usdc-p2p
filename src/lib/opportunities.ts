@@ -2,6 +2,7 @@ import { getMarketSeries } from '@/lib/db';
 import { getMarketAnalysis, type MarketAnalysisPair } from '@/lib/marketAnalysis';
 import { cycleEfficiencyPct } from '@/lib/profitCalculator';
 import { getFreshness, type Freshness } from '@/lib/dataQuality';
+import { estimateCosts, isConfigured, resolveReferenceAmount, type CapitalSettings } from '@/lib/capitalSettings';
 
 /**
  * Opportunity detection - built entirely from data already persisted by the
@@ -16,10 +17,10 @@ import { getFreshness, type Freshness } from '@/lib/dataQuality';
  * 34): never a bare score with no derivation.
  */
 
-const CYCLE_REFERENCE_AMOUNT = 1000; // MZN - same default CurrencyCycle.tsx uses
 const REVERSAL_RECENCY_HOURS = 1;
 const SERIES_WINDOW_HOURS = 24; // plenty to guarantee a lastBuy/lastSell given the ~10 min cron cadence
-const FIXED_COSTS_SCORE = 5; // out of 15 - no persisted fee/cost config exists yet (spec section 19, separate phase)
+const UNCONFIGURED_COSTS_SCORE = 5; // out of 15 - neutral score while the user hasn't set real costs (Configurações)
+const CONFIGURED_COSTS_SCORE = 15; // out of 15 - the user told us their real costs, so this is genuinely known now
 
 export type OpportunityScore = { price: number; liquidity: number; stability: number; costs: number; dataQuality: number; total: number };
 
@@ -84,12 +85,12 @@ function scoreDataQuality(freshness: Freshness): number {
   return 0;
 }
 
-function buildScore(price: number, liquidity: number, stability: number, dataQuality: number): OpportunityScore {
-  const costs = FIXED_COSTS_SCORE;
+function buildScore(price: number, liquidity: number, stability: number, costs: number, dataQuality: number): OpportunityScore {
   return { price, liquidity, stability, costs, dataQuality, total: price + liquidity + stability + costs + dataQuality };
 }
 
-export async function getOpportunities(): Promise<OpportunitiesResult> {
+export async function getOpportunities(settings: CapitalSettings, realTotalMzn: number | null): Promise<OpportunitiesResult> {
+  const costsScore = isConfigured(settings) ? CONFIGURED_COSTS_SCORE : UNCONFIGURED_COSTS_SCORE;
   const [marketSeries, marketAnalysis] = await Promise.all([getMarketSeries(SERIES_WINDOW_HOURS), getMarketAnalysis(7)]);
 
   const mzn = marketSeries.find((s) => s.asset === 'USDT' && s.fiat === 'MZN');
@@ -125,7 +126,11 @@ export async function getOpportunities(): Promise<OpportunitiesResult> {
           )
         : null;
 
-    const grossResult = (CYCLE_REFERENCE_AMOUNT * cyclePct) / 100;
+    const { amount: referenceAmount, source: referenceSource } = resolveReferenceAmount(settings, realTotalMzn);
+    const grossResult = (referenceAmount * cyclePct) / 100;
+    const costs = estimateCosts(settings, grossResult);
+    const netResult = grossResult - costs.total;
+    const costsConfigured = isConfigured(settings);
 
     opportunities.push({
       id: 'cycle-mzn-zar',
@@ -133,16 +138,18 @@ export async function getOpportunities(): Promise<OpportunitiesResult> {
       market: 'USDT/MZN ⇄ USDT/ZAR',
       headline: `Ciclo MZN⇄ZAR com eficiência real de +${cyclePct.toFixed(2)}% neste momento`,
       detectedAt: Date.now(),
-      referenceAmount: CYCLE_REFERENCE_AMOUNT,
+      referenceAmount,
       fiat: 'MZN',
       grossResult,
-      costs: 0,
-      netResult: grossResult,
-      score: buildScore(scorePriceMagnitude(cyclePct), scoreLiquidity(liquidity), scoreStability(volatility), scoreDataQuality(freshness)),
+      costs: costs.total,
+      netResult,
+      score: buildScore(scorePriceMagnitude(cyclePct), scoreLiquidity(liquidity), scoreStability(volatility), costsScore, scoreDataQuality(freshness)),
       why: [
         `Eficiência do ciclo (ida MZN→USDT→ZAR, volta ZAR→USDT→MZN) = +${cyclePct.toFixed(2)}% agora, calculada com os preços reais de compra/venda dos dois mercados (mesma fórmula usada nos alertas de ciclo em Configurações).`,
-        `Resultado bruto estimado para uma viagem de referência de ${CYCLE_REFERENCE_AMOUNT} MZN: ${grossResult.toFixed(2)} MZN.`,
-        `Custos: sem configuração de taxas/custos guardada ainda - pontuação de custos fixa em ${FIXED_COSTS_SCORE}/15 (neutra), o resultado líquido acima NÃO desconta taxas reais que possas ter.`,
+        `Resultado bruto estimado para uma viagem de referência de ${referenceAmount.toFixed(2)} MZN (${referenceSource === 'real' ? 'o teu saldo real atual' : 'valor manual definido em Configurações'}): ${grossResult.toFixed(2)} MZN.`,
+        costsConfigured
+          ? `Custos reais configurados em Configurações: ${costs.pct.toFixed(2)}% + ${costs.fixed.toFixed(2)} MZN fixo = ${costs.total.toFixed(2)} MZN descontados do resultado líquido.`
+          : `Custos: sem configuração de taxas/custos guardada em Configurações - pontuação de custos neutra (${UNCONFIGURED_COSTS_SCORE}/15), o resultado líquido acima ainda não desconta taxas reais que possas ter.`,
         `Liquidez considerada: ${liquidity != null ? liquidity.toFixed(1) : 'sem dados'} anúncios em média (o mais baixo dos dois mercados).`,
         `Estabilidade considerada: volatilidade recente de até ${volatility != null ? volatility.toFixed(2) : '—'}% (7 dias) - quanto menor, mais estável o preço usado.`,
         `Dados com ${freshness === 'live' ? 'menos de 5 min' : freshness === 'delayed' ? 'até 30 min' : 'mais de 30 min'} de idade.`,
@@ -174,7 +181,7 @@ export async function getOpportunities(): Promise<OpportunitiesResult> {
         grossResult: null,
         costs: null,
         netResult: null,
-        score: buildScore(scorePriceMagnitude(movePct), scoreLiquidity(analysis?.avgLiquidity ?? null), scoreStability(volatility), scoreDataQuality(freshness)),
+        score: buildScore(scorePriceMagnitude(movePct), scoreLiquidity(analysis?.avgLiquidity ?? null), scoreStability(volatility), costsScore, scoreDataQuality(freshness)),
         why: [
           `Reversão de tendência confirmada (não um único tick de ruído - exige 2 leituras seguidas na nova direção, ver lib/marketAnalysis.ts): preço passou de ${r.fromPrice.toFixed(2)} para ${r.toPrice.toFixed(2)} ${series.fiat} (${movePct.toFixed(2)}%).`,
           `Sem resultado bruto/líquido aqui - isto é um sinal de mercado, não uma operação com resultado definido; usa a Simulação para planear um valor concreto a este preço.`,

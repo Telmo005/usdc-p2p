@@ -4,6 +4,7 @@ import { getMarketSeries } from '@/lib/db';
 import { getOpenLots, getPositionSummaries, getRecentSales } from '@/lib/simulation';
 import { getRealWalletSnapshot } from '@/lib/wallet';
 import { getMidRates } from '@/lib/exchangeRates';
+import { fromProfile, resolveReferenceAmount } from '@/lib/capitalSettings';
 import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
 import { QuickSimulator } from '@/components/QuickSimulator';
 import { CurrencyCycle } from '@/components/CurrencyCycle';
@@ -22,7 +23,8 @@ export default async function SimulationPage({
 }: {
   searchParams: Promise<{ asset?: string; fiat?: string; wallet?: string; qty?: string; side?: string; price?: string }>;
 }) {
-  const { user } = await requireUser();
+  const { user, profile } = await requireUser();
+  const capitalSettings = fromProfile(profile);
   const sp = await searchParams;
   // Two distinct "arrived here from elsewhere" flows, distinguished by which
   // params show up: `wallet` means "sell what I already hold" (Carteira,
@@ -57,6 +59,8 @@ export default async function SimulationPage({
   } catch (err) {
     walletFetchError = err instanceof Error ? err.message : 'Falha ao ler o saldo da Binance.';
   }
+
+  const { amount: referenceAmount } = resolveReferenceAmount(capitalSettings, walletSnapshot?.totalMzn ?? null);
 
   const sellableBalances: SellableBalance[] = walletSnapshot
     ? walletSnapshot.groups.flatMap((g) =>
@@ -128,9 +132,9 @@ export default async function SimulationPage({
         )
       )}
 
-      <QuickSimulator pairs={marketPairs} />
+      <QuickSimulator pairs={marketPairs} initialAmount={referenceAmount} />
 
-      <CurrencyCycle pairs={marketPairs} />
+      <CurrencyCycle pairs={marketPairs} initialAmount={referenceAmount} />
 
       <details className="group rounded-xl border border-border bg-surface open:pb-5" open={fromAd}>
         <summary className="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-muted marker:hidden group-open:text-foreground">

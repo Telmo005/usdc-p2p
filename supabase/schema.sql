@@ -269,6 +269,42 @@ create table if not exists p2p_manager.market_trend_state (
 );
 
 -- ---------------------------------------------------------------------------
+-- sim_lots / sim_sales: the profit simulator. Purchases registered here are
+-- deliberately separate from `orders` (which only ever holds what Binance's
+-- API actually returned) - this is a sandbox for planning real money moves
+-- (own manual entries, real math), not a mirror of synced trades. FIFO
+-- across lots when a sale spans more than one (see lib/simulation.ts).
+-- ---------------------------------------------------------------------------
+create table if not exists p2p_manager.sim_lots (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  asset text not null default 'USDT',
+  fiat text not null,
+  quantity numeric not null check (quantity > 0),
+  quantity_remaining numeric not null check (quantity_remaining >= 0),
+  buy_price numeric not null check (buy_price > 0),
+  buy_fee numeric not null default 0,
+  notes text,
+  status text not null default 'open' check (status in ('open', 'closed')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists sim_lots_user_open_idx on p2p_manager.sim_lots (user_id, asset, fiat, status, created_at);
+
+create table if not exists p2p_manager.sim_sales (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  lot_id uuid not null references p2p_manager.sim_lots(id) on delete cascade,
+  quantity numeric not null check (quantity > 0),
+  sell_price numeric not null check (sell_price > 0),
+  sell_fee numeric not null default 0,
+  realized_profit numeric not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists sim_sales_user_idx on p2p_manager.sim_sales (user_id, created_at desc);
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security. Note on how this app actually connects: the Next.js
 -- server talks to Postgres directly via DATABASE_URL (the pooler/postgres
 -- role), not through PostgREST - that role bypasses RLS like any Postgres
@@ -294,6 +330,8 @@ alter table p2p_manager.sync_state enable row level security;
 alter table p2p_manager.exchange_rates enable row level security;
 alter table p2p_manager.market_snapshots enable row level security;
 alter table p2p_manager.market_trend_state enable row level security;
+alter table p2p_manager.sim_lots enable row level security;
+alter table p2p_manager.sim_sales enable row level security;
 
 drop policy if exists profiles_select on p2p_manager.profiles;
 create policy profiles_select on p2p_manager.profiles for select using (id = auth.uid() or p2p_manager.is_admin());
@@ -340,3 +378,9 @@ create policy market_snapshots_select on p2p_manager.market_snapshots for select
 
 drop policy if exists market_trend_state_select on p2p_manager.market_trend_state;
 create policy market_trend_state_select on p2p_manager.market_trend_state for select using (true);
+
+drop policy if exists sim_lots_all on p2p_manager.sim_lots;
+create policy sim_lots_all on p2p_manager.sim_lots for all using (user_id = auth.uid() or p2p_manager.is_admin()) with check (user_id = auth.uid());
+
+drop policy if exists sim_sales_all on p2p_manager.sim_sales;
+create policy sim_sales_all on p2p_manager.sim_sales for all using (user_id = auth.uid() or p2p_manager.is_admin()) with check (user_id = auth.uid());

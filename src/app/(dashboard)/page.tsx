@@ -125,6 +125,7 @@ export default async function DashboardPage() {
       <section className="rounded-xl border border-border bg-surface p-5">
         <h2 className="text-sm font-semibold">Ações rápidas</h2>
         <div className="mt-3 flex flex-wrap gap-2">
+          <QuickAction href="/simulation" label="Simular lucro" />
           <QuickAction href="/ads" label="Criar anúncio" />
           <QuickAction href="/orders" label="Ver ordens" />
           <QuickAction href="/ads" label="Ver anúncios" />

@@ -1,4 +1,4 @@
-import { Pool, type QueryResultRow } from 'pg';
+import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 /**
  * Direct Postgres access to the `p2p_manager` schema. This app talks to
@@ -37,6 +37,26 @@ export async function query<T extends QueryResultRow = QueryResultRow>(text: str
   const pool = getPool();
   const result = await pool.query<T>(text, params);
   return result.rows;
+}
+
+/** Checks out one connection and wraps `fn` in BEGIN/COMMIT (ROLLBACK on
+ *  throw) - for multi-statement writes that must land atomically, like a
+ *  sale that spans several lots (lib/simulation.ts). Regular reads/writes
+ *  should keep using `query`, which lets the pool balance connections. */
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export type Order = {

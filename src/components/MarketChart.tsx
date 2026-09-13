@@ -163,16 +163,27 @@ export function MarketChart({ series }: { series: MarketSeries }) {
                 labelFormatter={(v) => fmtTime(v as number)}
                 formatter={(value, name) => [`${Number(value).toFixed(2)} ${series.fiat}`, String(name)]}
               />
-              <Area type="monotone" dataKey="buy" name="Compra" stroke="var(--info)" strokeWidth={2} fill={`url(#${gradCompra})`} connectNulls dot={false} />
               <Area
-                type="monotone"
+                type="linear"
+                dataKey="buy"
+                name="Compra"
+                stroke="var(--info)"
+                strokeWidth={2.5}
+                fill={`url(#${gradCompra})`}
+                connectNulls
+                dot={{ r: 4, fill: 'var(--info)', strokeWidth: 0 }}
+                activeDot={{ r: 6 }}
+              />
+              <Area
+                type="linear"
                 dataKey="sell"
                 name="Venda"
                 stroke="var(--positive)"
-                strokeWidth={2}
+                strokeWidth={2.5}
                 fill={`url(#${gradVenda})`}
                 connectNulls
-                dot={false}
+                dot={{ r: 4, fill: 'var(--positive)', strokeWidth: 0 }}
+                activeDot={{ r: 6 }}
               />
               {reversals.map((r, i) => (
                 <ReferenceDot

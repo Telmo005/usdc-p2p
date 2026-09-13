@@ -155,9 +155,14 @@ create table if not exists p2p_manager.wallet_movements (
   asset text not null,
   amount numeric not null,
   balance_after numeric,
+  notes text,
   related_order_id uuid references p2p_manager.orders(id) on delete set null,
   created_at timestamptz not null default now()
 );
+
+-- Table predates this column - explicit ALTER so it lands on the already
+-- deployed database too, not just fresh installs.
+alter table p2p_manager.wallet_movements add column if not exists notes text;
 
 create index if not exists wallet_movements_user_idx on p2p_manager.wallet_movements (user_id, created_at desc);
 

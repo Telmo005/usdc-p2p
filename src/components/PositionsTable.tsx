@@ -39,49 +39,88 @@ export function PositionsTable({ lots, marketPrices }: { lots: LotRow[]; marketP
       {lots.length === 0 ? (
         <p className="mt-3 text-sm text-muted">Ainda não registaste nenhuma compra para simulação.</p>
       ) : (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-xs uppercase tracking-wide text-muted">
-                <th className="pb-2 pr-4">Par</th>
-                <th className="pb-2 pr-4">Quantidade aberta</th>
-                <th className="pb-2 pr-4">Preço de compra</th>
-                <th className="pb-2 pr-4">Preço de venda p/ {isFinite(pct) ? pct : 0}% lucro</th>
-                <th className="pb-2 pr-4">Preço de mercado (venda)</th>
-                <th className="pb-2">Lucro/prejuízo ao preço de mercado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lots.map((lot) => {
-                const feeForRemaining = lot.quantity > 0 ? lot.buyFee * (lot.quantityRemaining / lot.quantity) : 0;
-                const suggested = Number.isFinite(pct)
-                  ? requiredSellPrice({ quantity: lot.quantityRemaining, buyPrice: lot.buyPrice, buyFee: feeForRemaining, sellFee: 0, minProfitPct: pct })
-                  : null;
-                const market = marketPrices[`${lot.asset}/${lot.fiat}`];
-                const marketProfit =
-                  market?.sell != null
-                    ? computeProfit({ quantity: lot.quantityRemaining, buyPrice: lot.buyPrice, sellPrice: market.sell, buyFee: feeForRemaining, sellFee: 0 })
-                    : null;
+        (() => {
+          const computed = lots.map((lot) => {
+            const feeForRemaining = lot.quantity > 0 ? lot.buyFee * (lot.quantityRemaining / lot.quantity) : 0;
+            const suggested = Number.isFinite(pct)
+              ? requiredSellPrice({ quantity: lot.quantityRemaining, buyPrice: lot.buyPrice, buyFee: feeForRemaining, sellFee: 0, minProfitPct: pct })
+              : null;
+            const market = marketPrices[`${lot.asset}/${lot.fiat}`];
+            const marketProfit =
+              market?.sell != null
+                ? computeProfit({ quantity: lot.quantityRemaining, buyPrice: lot.buyPrice, sellPrice: market.sell, buyFee: feeForRemaining, sellFee: 0 })
+                : null;
+            return { lot, suggested, market, marketProfit };
+          });
 
-                return (
-                  <tr key={lot.id} className="border-t border-border">
-                    <td className="py-2 pr-4">
-                      {lot.asset}/{lot.fiat}
-                      {lot.notes && <div className="text-xs text-muted">{lot.notes}</div>}
-                    </td>
-                    <td className="py-2 pr-4 font-mono">{lot.quantityRemaining}</td>
-                    <td className="py-2 pr-4 font-mono">{lot.buyPrice.toFixed(4)}</td>
-                    <td className="py-2 pr-4 font-mono text-accent">{suggested != null ? suggested.toFixed(4) : '-'}</td>
-                    <td className="py-2 pr-4 font-mono">{market?.sell != null ? market.sell.toFixed(4) : 'sem dados'}</td>
-                    <td className={`py-2 font-mono ${marketProfit && marketProfit.profit >= 0 ? 'text-positive' : marketProfit ? 'text-negative' : 'text-muted'}`}>
-                      {marketProfit ? `${marketProfit.profit.toFixed(2)} ${lot.fiat} (${marketProfit.profitPct.toFixed(2)}%)` : '-'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+          return (
+            <>
+              <div className="mt-3 hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="text-xs uppercase tracking-wide text-muted">
+                      <th className="pb-2 pr-4">Par</th>
+                      <th className="pb-2 pr-4">Quantidade aberta</th>
+                      <th className="pb-2 pr-4">Preço de compra</th>
+                      <th className="pb-2 pr-4">Preço de venda p/ {isFinite(pct) ? pct : 0}% lucro</th>
+                      <th className="pb-2 pr-4">Preço de mercado (venda)</th>
+                      <th className="pb-2">Lucro/prejuízo ao preço de mercado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {computed.map(({ lot, suggested, market, marketProfit }) => (
+                      <tr key={lot.id} className="border-t border-border">
+                        <td className="py-2 pr-4">
+                          {lot.asset}/{lot.fiat}
+                          {lot.notes && <div className="text-xs text-muted">{lot.notes}</div>}
+                        </td>
+                        <td className="py-2 pr-4 font-mono">{lot.quantityRemaining}</td>
+                        <td className="py-2 pr-4 font-mono">{lot.buyPrice.toFixed(4)}</td>
+                        <td className="py-2 pr-4 font-mono text-accent">{suggested != null ? suggested.toFixed(4) : '-'}</td>
+                        <td className="py-2 pr-4 font-mono">{market?.sell != null ? market.sell.toFixed(4) : 'sem dados'}</td>
+                        <td
+                          className={`py-2 font-mono ${marketProfit && marketProfit.profit >= 0 ? 'text-positive' : marketProfit ? 'text-negative' : 'text-muted'}`}
+                        >
+                          {marketProfit ? `${marketProfit.profit.toFixed(2)} ${lot.fiat} (${marketProfit.profitPct.toFixed(2)}%)` : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 flex flex-col gap-3 md:hidden">
+                {computed.map(({ lot, suggested, market, marketProfit }) => (
+                  <div key={lot.id} className="rounded-lg border border-border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        {lot.asset}/{lot.fiat} · {lot.quantityRemaining}
+                      </span>
+                      <span className="font-mono text-xs text-muted">compra {lot.buyPrice.toFixed(4)}</span>
+                    </div>
+                    {lot.notes && <div className="mt-0.5 text-xs text-muted">{lot.notes}</div>}
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      <div>
+                        <span className="text-muted">Venda p/ {isFinite(pct) ? pct : 0}%: </span>
+                        <span className="font-mono text-accent">{suggested != null ? suggested.toFixed(4) : '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted">Mercado: </span>
+                        <span className="font-mono">{market?.sell != null ? market.sell.toFixed(4) : 'sem dados'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-muted">Lucro/prejuízo ao mercado: </span>
+                        <span className={`font-mono ${marketProfit && marketProfit.profit >= 0 ? 'text-positive' : marketProfit ? 'text-negative' : 'text-muted'}`}>
+                          {marketProfit ? `${marketProfit.profit.toFixed(2)} ${lot.fiat} (${marketProfit.profitPct.toFixed(2)}%)` : '-'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          );
+        })()
       )}
     </div>
   );

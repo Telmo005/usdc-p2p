@@ -112,34 +112,52 @@ export default async function SimulationPage() {
         {sales.length === 0 ? (
           <p className="mt-3 text-sm text-muted">Ainda sem vendas registadas.</p>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-wide text-muted">
-                  <th className="pb-2 pr-4">Par</th>
-                  <th className="pb-2 pr-4">Quantidade</th>
-                  <th className="pb-2 pr-4">Preço de venda</th>
-                  <th className="pb-2 pr-4">Lucro realizado</th>
-                  <th className="pb-2">Data</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sales.map((s) => (
-                  <tr key={s.id} className="border-t border-border">
-                    <td className="py-2 pr-4">
-                      {s.asset}/{s.fiat}
-                    </td>
-                    <td className="py-2 pr-4 font-mono">{s.quantity}</td>
-                    <td className="py-2 pr-4 font-mono">{s.sell_price}</td>
-                    <td className={`py-2 pr-4 font-mono ${Number(s.realized_profit) >= 0 ? 'text-positive' : 'text-negative'}`}>
-                      {Number(s.realized_profit).toFixed(2)} {s.fiat}
-                    </td>
-                    <td className="py-2 text-muted">{new Date(s.created_at).toLocaleString('pt-PT')}</td>
+          <>
+            <div className="mt-3 hidden overflow-x-auto md:block">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-muted">
+                    <th className="pb-2 pr-4">Par</th>
+                    <th className="pb-2 pr-4">Quantidade</th>
+                    <th className="pb-2 pr-4">Preço de venda</th>
+                    <th className="pb-2 pr-4">Lucro realizado</th>
+                    <th className="pb-2">Data</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {sales.map((s) => (
+                    <tr key={s.id} className="border-t border-border">
+                      <td className="py-2 pr-4">
+                        {s.asset}/{s.fiat}
+                      </td>
+                      <td className="py-2 pr-4 font-mono">{s.quantity}</td>
+                      <td className="py-2 pr-4 font-mono">{s.sell_price}</td>
+                      <td className={`py-2 pr-4 font-mono ${Number(s.realized_profit) >= 0 ? 'text-positive' : 'text-negative'}`}>
+                        {Number(s.realized_profit).toFixed(2)} {s.fiat}
+                      </td>
+                      <td className="py-2 text-muted">{new Date(s.created_at).toLocaleString('pt-PT')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-3 flex flex-col gap-2 md:hidden">
+              {sales.map((s) => (
+                <div key={s.id} className="rounded-lg border border-border p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">
+                      {s.asset}/{s.fiat} · {s.quantity} a {s.sell_price}
+                    </span>
+                    <span className={`font-mono ${Number(s.realized_profit) >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      {Number(s.realized_profit).toFixed(2)} {s.fiat}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-muted">{new Date(s.created_at).toLocaleString('pt-PT')}</div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </section>
     </div>

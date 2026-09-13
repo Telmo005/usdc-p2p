@@ -56,44 +56,82 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         {rows.length === 0 ? (
           <p className="text-sm text-muted">Nenhuma ordem encontrada para este filtro. Sincroniza no Início para importar o teu histórico.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-wide text-muted">
-                  <th className="pb-2 pr-4">ID</th>
-                  <th className="pb-2 pr-4">Tipo</th>
-                  <th className="pb-2 pr-4">Quantidade</th>
-                  <th className="pb-2 pr-4">Preço</th>
-                  <th className="pb-2 pr-4">Total</th>
-                  <th className="pb-2 pr-4">Método</th>
-                  <th className="pb-2 pr-4">Estado</th>
-                  <th className="pb-2">Data</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((o) => (
-                  <tr key={o.id} className="border-t border-border">
-                    <td className="py-2 pr-4 font-mono text-xs text-muted">{o.external_order_id}</td>
-                    <td className="py-2 pr-4">{o.side === 'buy' ? 'Compra' : 'Venda'}</td>
-                    <td className="py-2 pr-4">
-                      {o.quantity} {o.asset}
-                    </td>
-                    <td className="py-2 pr-4 font-mono">
-                      {o.price} {o.fiat}
-                    </td>
-                    <td className="py-2 pr-4 font-mono">
-                      {o.total_value} {o.fiat}
-                    </td>
-                    <td className="py-2 pr-4">{o.payment_method ?? '-'}</td>
-                    <td className="py-2 pr-4">
-                      <StatusBadge status={o.status} />
-                    </td>
-                    <td className="py-2 text-muted">{new Date(o.created_at).toLocaleString('pt-PT')}</td>
+          <>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-muted">
+                    <th className="pb-2 pr-4">ID</th>
+                    <th className="pb-2 pr-4">Tipo</th>
+                    <th className="pb-2 pr-4">Quantidade</th>
+                    <th className="pb-2 pr-4">Preço</th>
+                    <th className="pb-2 pr-4">Total</th>
+                    <th className="pb-2 pr-4">Método</th>
+                    <th className="pb-2 pr-4">Estado</th>
+                    <th className="pb-2">Data</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.map((o) => (
+                    <tr key={o.id} className="border-t border-border">
+                      <td className="py-2 pr-4 font-mono text-xs text-muted">{o.external_order_id}</td>
+                      <td className="py-2 pr-4">{o.side === 'buy' ? 'Compra' : 'Venda'}</td>
+                      <td className="py-2 pr-4">
+                        {o.quantity} {o.asset}
+                      </td>
+                      <td className="py-2 pr-4 font-mono">
+                        {o.price} {o.fiat}
+                      </td>
+                      <td className="py-2 pr-4 font-mono">
+                        {o.total_value} {o.fiat}
+                      </td>
+                      <td className="py-2 pr-4">{o.payment_method ?? '-'}</td>
+                      <td className="py-2 pr-4">
+                        <StatusBadge status={o.status} />
+                      </td>
+                      <td className="py-2 text-muted">{new Date(o.created_at).toLocaleString('pt-PT')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col gap-3 md:hidden">
+              {rows.map((o) => (
+                <div key={o.id} className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">
+                      {o.side === 'buy' ? 'Compra' : 'Venda'} · {o.quantity} {o.asset}
+                    </span>
+                    <StatusBadge status={o.status} />
+                  </div>
+                  <div className="mt-1 font-mono text-xs text-muted">{o.external_order_id}</div>
+                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    <div>
+                      <span className="text-muted">Preço: </span>
+                      <span className="font-mono">
+                        {o.price} {o.fiat}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted">Total: </span>
+                      <span className="font-mono">
+                        {o.total_value} {o.fiat}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted">Método: </span>
+                      {o.payment_method ?? '-'}
+                    </div>
+                    <div>
+                      <span className="text-muted">Data: </span>
+                      {new Date(o.created_at).toLocaleDateString('pt-PT')}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

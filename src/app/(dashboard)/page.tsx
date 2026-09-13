@@ -85,40 +85,73 @@ export default async function DashboardPage() {
         {summary.recentOrders.length === 0 ? (
           <p className="mt-4 text-sm text-muted">Sem ordens ainda.</p>
         ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-wide text-muted">
-                  <th className="pb-2 pr-4">Tipo</th>
-                  <th className="pb-2 pr-4">Ativo</th>
-                  <th className="pb-2 pr-4">Preço</th>
-                  <th className="pb-2 pr-4">Total</th>
-                  <th className="pb-2 pr-4">Estado</th>
-                  <th className="pb-2">Data</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.recentOrders.map((o) => (
-                  <tr key={o.id} className="border-t border-border">
-                    <td className="py-2 pr-4">{o.side === 'buy' ? 'Compra' : 'Venda'}</td>
-                    <td className="py-2 pr-4">
-                      {o.quantity} {o.asset}
-                    </td>
-                    <td className="py-2 pr-4 font-mono">
-                      {o.price} {o.fiat}
-                    </td>
-                    <td className="py-2 pr-4 font-mono">
-                      {o.total_value} {o.fiat}
-                    </td>
-                    <td className="py-2 pr-4">
-                      <StatusBadge status={o.status} />
-                    </td>
-                    <td className="py-2 text-muted">{new Date(o.created_at).toLocaleDateString('pt-PT')}</td>
+          <>
+            <div className="mt-4 hidden overflow-x-auto md:block">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-muted">
+                    <th className="pb-2 pr-4">Tipo</th>
+                    <th className="pb-2 pr-4">Ativo</th>
+                    <th className="pb-2 pr-4">Preço</th>
+                    <th className="pb-2 pr-4">Total</th>
+                    <th className="pb-2 pr-4">Estado</th>
+                    <th className="pb-2">Data</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {summary.recentOrders.map((o) => (
+                    <tr key={o.id} className="border-t border-border">
+                      <td className="py-2 pr-4">{o.side === 'buy' ? 'Compra' : 'Venda'}</td>
+                      <td className="py-2 pr-4">
+                        {o.quantity} {o.asset}
+                      </td>
+                      <td className="py-2 pr-4 font-mono">
+                        {o.price} {o.fiat}
+                      </td>
+                      <td className="py-2 pr-4 font-mono">
+                        {o.total_value} {o.fiat}
+                      </td>
+                      <td className="py-2 pr-4">
+                        <StatusBadge status={o.status} />
+                      </td>
+                      <td className="py-2 text-muted">{new Date(o.created_at).toLocaleDateString('pt-PT')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 md:hidden">
+              {summary.recentOrders.map((o) => (
+                <div key={o.id} className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">
+                      {o.side === 'buy' ? 'Compra' : 'Venda'} · {o.quantity} {o.asset}
+                    </span>
+                    <StatusBadge status={o.status} />
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    <div>
+                      <span className="text-muted">Preço: </span>
+                      <span className="font-mono">
+                        {o.price} {o.fiat}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted">Total: </span>
+                      <span className="font-mono">
+                        {o.total_value} {o.fiat}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-muted">Data: </span>
+                      {new Date(o.created_at).toLocaleDateString('pt-PT')}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </section>
 

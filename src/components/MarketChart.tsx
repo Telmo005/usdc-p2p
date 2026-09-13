@@ -85,7 +85,7 @@ export function MarketChart({ series }: { series: MarketSeries }) {
           </h3>
           <p className="text-xs text-muted">Anúncios P2P reais (Binance) · média dos 5 melhores por lado</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted">Compra</span>
             <span className="font-mono font-semibold text-info">{series.lastBuy?.toFixed(2) ?? '-'}</span>

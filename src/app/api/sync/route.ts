@@ -47,12 +47,29 @@ export async function POST() {
 
   for (const o of orders) {
     const status = mapStatus(o.orderStatus);
+
+    // Binance's C2C history only gives a nickname for the other side, no
+    // stable counterparty id - the nickname itself is the best identity key
+    // this endpoint offers, so it doubles as external_id here.
+    let counterpartyId: string | null = null;
+    if (o.counterPartNickName) {
+      const [cp] = await query<{ id: string }>(
+        `insert into p2p_manager.counterparties (user_id, platform, external_id, nickname, last_seen_at)
+         values ($1, 'binance', $2, $2, now())
+         on conflict (user_id, platform, external_id) do update set nickname = excluded.nickname, last_seen_at = now()
+         returning id`,
+        [user.id, o.counterPartNickName]
+      );
+      counterpartyId = cp?.id ?? null;
+    }
+
     const rows = await query<{ inserted: boolean }>(
       `insert into p2p_manager.orders (
-         user_id, platform, external_order_id, side, asset, fiat, quantity, price, total_value, fee,
+         user_id, platform, external_order_id, counterparty_id, side, asset, fiat, quantity, price, total_value, fee,
          payment_method, status, raw, created_at, completed_at
-       ) values ($1, 'binance', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, to_timestamp($13 / 1000.0), case when $11::text = 'completed' then to_timestamp($13 / 1000.0) else null end)
+       ) values ($1, 'binance', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, to_timestamp($14 / 1000.0), case when $12::text = 'completed' then to_timestamp($14 / 1000.0) else null end)
        on conflict (user_id, platform, external_order_id) do update set
+         counterparty_id = excluded.counterparty_id,
          quantity = excluded.quantity,
          price = excluded.price,
          total_value = excluded.total_value,
@@ -65,6 +82,7 @@ export async function POST() {
       [
         user.id,
         o.orderNumber,
+        counterpartyId,
         o.tradeType.toLowerCase(),
         o.asset,
         o.fiat,

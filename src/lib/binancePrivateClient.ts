@@ -77,3 +77,17 @@ export async function fetchAllC2COrders(): Promise<BinanceC2COrder[]> {
   }
   return all;
 }
+
+export type BinanceBalance = { asset: string; free: number; locked: number };
+
+/**
+ * The account's real live Spot wallet balances (GET /api/v3/account) -
+ * "Enable Reading" alone covers this, no trading permission needed. Only
+ * non-zero balances are returned.
+ */
+export async function fetchSpotBalances(): Promise<BinanceBalance[]> {
+  const result = await signedGet<{ balances: Array<{ asset: string; free: string; locked: string }> }>('/api/v3/account', {});
+  return (result.balances ?? [])
+    .map((b) => ({ asset: b.asset, free: Number(b.free), locked: Number(b.locked) }))
+    .filter((b) => b.free > 0 || b.locked > 0);
+}

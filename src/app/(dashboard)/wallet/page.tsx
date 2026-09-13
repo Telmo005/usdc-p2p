@@ -1,13 +1,67 @@
+import { Wallet, Landmark, Sprout, NotebookPen, History } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { getMarketSeries } from '@/lib/db';
-import { getRealWalletSnapshot, getWalletMovements } from '@/lib/wallet';
-import { StatCard } from '@/components/StatCard';
+import { getRealWalletSnapshot, getWalletMovements, type WalletGroup } from '@/lib/wallet';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
+import { RefreshButton } from '@/components/RefreshButton';
 import { WalletMovementForm } from '@/components/WalletMovementForm';
 
 const TYPE_LABEL: Record<string, string> = { deposit: 'Depósito', withdrawal: 'Levantamento', adjustment: 'Ajuste' };
+const GROUP_ICON: Record<WalletGroup['id'], typeof Wallet> = { spot: Wallet, funding: Landmark };
 
 function fmt(n: number, maxFrac = 2) {
   return n.toLocaleString('pt-PT', { maximumFractionDigits: maxFrac });
+}
+
+function BalanceRow({
+  label,
+  quantity,
+  quantityFrac,
+  usdEquivalent,
+  mznRate,
+  zarRate,
+  sub,
+}: {
+  label: string;
+  quantity: number;
+  quantityFrac: number;
+  usdEquivalent: number | null;
+  mznRate: number | null;
+  zarRate: number | null;
+  sub?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
+      <div>
+        <span className="font-medium">{label}</span>
+        {sub && <div className="text-[11px] text-muted">{sub}</div>}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span className="font-mono">{fmt(quantity, quantityFrac)}</span>
+        {usdEquivalent != null ? (
+          <>
+            <span className="text-muted">
+              ≈ <span className="font-mono text-foreground">{fmt(usdEquivalent, 4)} USD</span>
+            </span>
+            {mznRate != null && (
+              <span className="text-muted">
+                ≈ <span className="font-mono text-foreground">{fmt(usdEquivalent * mznRate)} MZN</span>
+              </span>
+            )}
+            {zarRate != null && (
+              <span className="text-muted">
+                ≈ <span className="font-mono text-foreground">{fmt(usdEquivalent * zarRate)} ZAR</span>
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="text-muted">sem câmbio rastreado para este ativo</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default async function WalletPage() {
@@ -19,7 +73,7 @@ export default async function WalletPage() {
   const mznRate = mzn?.lastBuy != null && mzn?.lastSell != null ? (mzn.lastBuy + mzn.lastSell) / 2 : null;
   const zarRate = zar?.lastBuy != null && zar?.lastSell != null ? (zar.lastBuy + zar.lastSell) / 2 : null;
 
-  let snapshot;
+  let snapshot: Awaited<ReturnType<typeof getRealWalletSnapshot>> | null = null;
   let fetchError: string | null = null;
   try {
     snapshot = await getRealWalletSnapshot(mznRate, zarRate);
@@ -28,93 +82,147 @@ export default async function WalletPage() {
   }
 
   const movements = await getWalletMovements(user.id);
+  const hasAnyRealBalance = snapshot ? snapshot.totalUsd > 0 || snapshot.groups.some((g) => g.balances.length > 0) : false;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">Carteira</h1>
-        <p className="mt-1 text-sm text-muted">
-          Saldo real, lido diretamente da tua conta Binance. Os totais de compra/venda das tuas operações ficam só no
-          histórico (Ordens) e nas estatísticas - não entram nesta conta.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold">Carteira</h1>
+          <p className="mt-1 text-sm text-muted">
+            Saldo real, lido diretamente da tua conta Binance (Spot, Funding e Earn). Os totais de compra/venda das tuas
+            operações ficam só no histórico e nas estatísticas - não entram aqui.
+          </p>
+        </div>
+        <RefreshButton />
       </div>
 
       {fetchError && (
-        <div className="rounded-xl border border-negative/40 bg-negative/10 px-4 py-3 text-sm text-negative">
-          Não consegui ler o saldo agora: {fetchError}
-        </div>
+        <ErrorBanner
+          title="Não consegui ler o saldo agora"
+          message={`${fetchError} Tenta "Atualizar" acima - se persistir, confirma em Configurações que a chave da Binance ainda está ativa.`}
+        />
       )}
 
       {snapshot && (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label="Total (stablecoins)" value={`${fmt(snapshot.totalUsd, 4)} USD`} />
-            <StatCard label="Equivalente em MZN" value={snapshot.totalMzn != null ? `${fmt(snapshot.totalMzn)} MZN` : '—'} />
-            <StatCard label="Equivalente em ZAR" value={snapshot.totalZar != null ? `${fmt(snapshot.totalZar)} ZAR` : '—'} />
+          <div className="rounded-xl border border-accent/40 bg-accent/5 p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-xs uppercase tracking-wide text-accent">Total em todas as carteiras</span>
+              <span className="text-[11px] text-muted">
+                lido {new Date(snapshot.fetchedAt).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-end gap-x-6 gap-y-1">
+              <span className="font-mono text-3xl font-bold">{fmt(snapshot.totalUsd, 4)} USD</span>
+              {snapshot.totalMzn != null && <span className="font-mono text-base text-muted">≈ {fmt(snapshot.totalMzn)} MZN</span>}
+              {snapshot.totalZar != null && <span className="font-mono text-base text-muted">≈ {fmt(snapshot.totalZar)} ZAR</span>}
+            </div>
+            {(snapshot.mznRate != null || snapshot.zarRate != null) && (
+              <div className="mt-2 text-[11px] text-muted">
+                Câmbio: {snapshot.mznRate != null && `${snapshot.mznRate.toFixed(4)} MZN por USD`}
+                {snapshot.mznRate != null && snapshot.zarRate != null && ' · '}
+                {snapshot.zarRate != null && `${snapshot.zarRate.toFixed(4)} ZAR por USD`} (preço médio de mercado atual)
+              </div>
+            )}
           </div>
 
-          <section className="rounded-xl border border-border bg-surface p-5">
-            <h2 className="text-sm font-semibold">Saldo por ativo</h2>
-            <p className="mt-1 text-xs text-muted">
-              Direto da Binance (Spot), agora mesmo.
-              {snapshot.mznRate != null && ` Câmbio usado: ${snapshot.mznRate.toFixed(4)} MZN por USD`}
-              {snapshot.mznRate != null && snapshot.zarRate != null && ' · '}
-              {snapshot.zarRate != null && `${snapshot.zarRate.toFixed(4)} ZAR por USD`}
-              {(snapshot.mznRate != null || snapshot.zarRate != null) && ' (preço médio de mercado atual).'}
-            </p>
+          {!hasAnyRealBalance && snapshot.earn.length === 0 ? (
+            <EmptyState
+              icon={Wallet}
+              title="Sem saldo em nenhuma carteira Binance neste momento"
+              description="Assim que houver fundos em Spot, Funding ou Earn, aparecem aqui automaticamente."
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {snapshot.groups.map((g) => {
+                const Icon = GROUP_ICON[g.id];
+                return (
+                  <SectionCard key={g.id} title={g.label} subtitle={g.description} icon={Icon}>
+                    {g.balances.length === 0 ? (
+                      <EmptyState title="Vazia" description="Sem saldo nesta carteira agora." />
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {g.balances.map((b) => (
+                          <BalanceRow
+                            key={b.asset}
+                            label={b.asset}
+                            quantity={b.quantity}
+                            quantityFrac={8}
+                            usdEquivalent={b.usdEquivalent}
+                            mznRate={mznRate}
+                            zarRate={zarRate}
+                          />
+                        ))}
+                        <div className="mt-1 flex justify-between border-t border-border pt-2 text-xs text-muted">
+                          <span>Subtotal</span>
+                          <span className="font-mono text-foreground">{fmt(g.totalUsd, 4)} USD</span>
+                        </div>
+                      </div>
+                    )}
+                  </SectionCard>
+                );
+              })}
+            </div>
+          )}
 
-            {snapshot.balances.length === 0 ? (
-              <p className="mt-3 text-sm text-muted">Sem saldo na conta Spot neste momento.</p>
+          <SectionCard
+            title="Earn (Simple Earn Flexível)"
+            subtitle="Capital a render juros na Binance - fica disponível para resgate, mas não é a mesma liquidez imediata de Spot/Funding."
+            icon={Sprout}
+          >
+            {snapshot.earn.length === 0 ? (
+              <EmptyState title="Sem posições em Earn" description="Nada alocado a produtos de rendimento neste momento." />
             ) : (
-              <div className="mt-3 flex flex-col gap-2">
-                {snapshot.balances.map((b) => (
-                  <div key={b.asset} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
-                    <span className="font-medium">{b.asset}</span>
+              <div className="flex flex-col gap-2">
+                {snapshot.earn.map((e) => (
+                  <div key={e.asset} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
+                    <div>
+                      <span className="font-medium">{e.asset}</span>
+                      <div className="text-[11px] text-positive">
+                        APY atual {(e.apr * 100).toFixed(2)}% · rendimentos acumulados {fmt(e.cumulativeRewards, 6)} {e.asset}
+                        {!e.canRedeem && ' · resgate indisponível agora'}
+                      </div>
+                    </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                      <span className="font-mono">{fmt(b.quantity, 8)}</span>
-                      {b.usdEquivalent != null ? (
+                      <span className="font-mono">{fmt(e.principal, 8)}</span>
+                      {e.usdEquivalent != null && (
                         <>
                           <span className="text-muted">
-                            ≈ <span className="font-mono text-foreground">{fmt(b.usdEquivalent, 4)} USD</span>
+                            ≈ <span className="font-mono text-foreground">{fmt(e.usdEquivalent, 4)} USD</span>
                           </span>
                           {mznRate != null && (
                             <span className="text-muted">
-                              ≈ <span className="font-mono text-foreground">{fmt(b.usdEquivalent * mznRate)} MZN</span>
-                            </span>
-                          )}
-                          {zarRate != null && (
-                            <span className="text-muted">
-                              ≈ <span className="font-mono text-foreground">{fmt(b.usdEquivalent * zarRate)} ZAR</span>
+                              ≈ <span className="font-mono text-foreground">{fmt(e.usdEquivalent * mznRate)} MZN</span>
                             </span>
                           )}
                         </>
-                      ) : (
-                        <span className="text-muted">sem câmbio rastreado para este ativo</span>
                       )}
                     </div>
                   </div>
                 ))}
+                <div className="mt-1 flex justify-between border-t border-border pt-2 text-xs text-muted">
+                  <span>Subtotal</span>
+                  <span className="font-mono text-foreground">{fmt(snapshot.earnTotalUsd, 4)} USD</span>
+                </div>
               </div>
             )}
-          </section>
+          </SectionCard>
         </>
       )}
 
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold">Registo pessoal de transferências</h2>
-        <p className="mt-1 text-xs text-muted">
-          Só para o teu próprio registo de movimentos que a Binance não vê (ex.: transferência para outra exchange ou
-          carteira). Isto é um caderno de notas - não altera nem soma ao saldo real acima.
-        </p>
-        <div className="mt-4">
-          <WalletMovementForm />
-        </div>
-      </section>
+      <SectionCard
+        title="Registo pessoal de transferências"
+        subtitle="Só para o teu próprio registo de movimentos que a Binance não vê (ex.: transferência para outra exchange ou carteira). É um caderno de notas - não altera nem soma ao saldo real acima."
+        icon={NotebookPen}
+        muted
+      >
+        <WalletMovementForm />
+      </SectionCard>
 
       {movements.length > 0 && (
-        <section className="rounded-xl border border-border bg-surface p-5">
-          <h2 className="text-sm font-semibold">Histórico do registo pessoal</h2>
-          <div className="mt-3 hidden overflow-x-auto md:block">
+        <SectionCard title="Histórico do registo pessoal" icon={History} muted>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="text-xs uppercase tracking-wide text-muted">
@@ -140,7 +248,7 @@ export default async function WalletPage() {
             </table>
           </div>
 
-          <div className="mt-3 flex flex-col gap-2 md:hidden">
+          <div className="flex flex-col gap-2 md:hidden">
             {movements.map((m) => (
               <div key={m.id} className="rounded-lg border border-border p-3 text-xs">
                 <div className="flex items-center justify-between gap-2">
@@ -155,7 +263,7 @@ export default async function WalletPage() {
               </div>
             ))}
           </div>
-        </section>
+        </SectionCard>
       )}
     </div>
   );

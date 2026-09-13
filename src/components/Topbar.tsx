@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Bell } from 'lucide-react';
 import { signOut } from '@/app/login/actions';
 import { markAllNotificationsRead } from '@/app/actions/notifications';
+import { MobileNav } from '@/components/MobileNav';
 import type { AppNotification } from '@/lib/db';
 
 function timeAgo(iso: string): string {
@@ -72,18 +73,26 @@ export function Topbar({
   referenceCurrency,
   unreadCount,
   notifications,
+  connectionOk,
+  lastSyncedAt,
 }: {
   fullName: string | null;
   referenceCurrency: string;
   unreadCount: number;
   notifications: AppNotification[];
+  connectionOk: boolean;
+  lastSyncedAt: string | null;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header className="flex items-center justify-between border-b border-border bg-surface px-5 py-3">
-      <div className="text-sm text-muted">
-        Moeda de referência: <span className="font-medium text-foreground">{referenceCurrency}</span>
+    <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 md:px-5">
+      <div className="flex items-center gap-3">
+        <MobileNav connectionOk={connectionOk} lastSyncedAt={lastSyncedAt} />
+        <div className="text-sm text-muted">
+          <span className="hidden sm:inline">Moeda de referência: </span>
+          <span className="font-medium text-foreground">{referenceCurrency}</span>
+        </div>
       </div>
       <div className="flex items-center gap-3">
         <NotificationsBell unreadCount={unreadCount} notifications={notifications} />
@@ -93,10 +102,10 @@ export function Topbar({
             onClick={() => setMenuOpen((v) => !v)}
             className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-raised"
           >
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
               {(fullName ?? '?').charAt(0).toUpperCase()}
             </span>
-            {fullName ?? 'Utilizador'}
+            <span className="hidden max-w-[10rem] truncate sm:inline">{fullName ?? 'Utilizador'}</span>
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-border bg-surface-raised py-1 text-sm shadow-lg">

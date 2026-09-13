@@ -2,17 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-
-const NAV_ITEMS = [
-  { href: '/', label: 'Início', icon: '🏠' },
-  { href: '/orders', label: 'Ordens', icon: '📋' },
-  { href: '/ads', label: 'Anúncios', icon: '📣' },
-  { href: '/simulation', label: 'Simulação', icon: '🧮' },
-  { href: '/wallet', label: 'Carteira', icon: '💰' },
-  { href: '/analytics', label: 'Análise', icon: '📊' },
-  { href: '/customers', label: 'Clientes', icon: '👥' },
-  { href: '/settings', label: 'Configurações', icon: '⚙️' },
-];
+import { NAV_ITEMS } from '@/components/navItems';
 
 export function Sidebar({
   connectionOk,

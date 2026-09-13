@@ -6,10 +6,12 @@ import { getRealWalletSnapshot } from '@/lib/wallet';
 import { getMidRates } from '@/lib/exchangeRates';
 import { fromProfile, resolveReferenceAmount } from '@/lib/capitalSettings';
 import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
+import { fetchP2PSnapshot } from '@/lib/binancePublicP2P';
 import { QuickSimulator } from '@/components/QuickSimulator';
 import { CurrencyCycle } from '@/components/CurrencyCycle';
 import { ProfitCalculator } from '@/components/ProfitCalculator';
 import { WalletSaleSimulator, type SellableBalance, type MarketPairWithAge } from '@/components/WalletSaleSimulator';
+import { MultiAdSimulator, type PairBooks } from '@/components/MultiAdSimulator';
 import { PositionsTable, type LotRow } from '@/components/PositionsTable';
 import { AddLotForm, RecordSaleForm } from '@/components/SimulationForms';
 import { StatCard } from '@/components/StatCard';
@@ -17,6 +19,19 @@ import { DataTag } from '@/components/DataTag';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
+
+/** Real individual ads (not the aggregate avg_top_price) for the
+ *  multi-advertiser fill simulator - same fetch ads/page.tsx already does
+ *  per side, just kept for both sides of one pair here. */
+async function fetchPairBooks(asset: string, fiat: string): Promise<PairBooks> {
+  const fetchedAt = Date.now();
+  try {
+    const [buySnap, sellSnap] = await Promise.all([fetchP2PSnapshot(asset, fiat, 'buy', 20), fetchP2PSnapshot(asset, fiat, 'sell', 20)]);
+    return { asset, fiat, buyAds: buySnap?.ads ?? [], sellAds: sellSnap?.ads ?? [], fetchedAt };
+  } catch {
+    return { asset, fiat, buyAds: [], sellAds: [], fetchedAt };
+  }
+}
 
 export default async function SimulationPage({
   searchParams,
@@ -61,6 +76,12 @@ export default async function SimulationPage({
   }
 
   const { amount: referenceAmount } = resolveReferenceAmount(capitalSettings, walletSnapshot?.totalMzn ?? null);
+
+  // Real individual ads (not the aggregate avg_top_price) for the
+  // multi-advertiser fill simulator - same fetch ads/page.tsx already does,
+  // just also kept for the buy side here.
+  const allPairBooks = await Promise.all(TRACKED_PAIRS.map((pair) => fetchPairBooks(pair.asset, pair.fiat)));
+  const pairBooks: PairBooks[] = allPairBooks.filter((p) => p.buyAds.length > 0 || p.sellAds.length > 0);
 
   const sellableBalances: SellableBalance[] = walletSnapshot
     ? walletSnapshot.groups.flatMap((g) =>
@@ -131,6 +152,8 @@ export default async function SimulationPage({
           />
         )
       )}
+
+      <MultiAdSimulator pairs={pairBooks} capitalSettings={capitalSettings} initialAmount={referenceAmount} />
 
       <QuickSimulator pairs={marketPairs} initialAmount={referenceAmount} />
 

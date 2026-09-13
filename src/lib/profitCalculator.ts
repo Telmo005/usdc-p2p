@@ -61,3 +61,18 @@ export function requiredQuantityForProfitAmount(args: {
   const qty = (targetProfit + buyFee + sellFee) / marginPerUnit;
   return qty > 0 ? qty : null;
 }
+
+/**
+ * Full round-trip efficiency of buying USDT with one fiat, selling it for
+ * a second fiat, buying USDT back with that second fiat, then selling it
+ * back for the first - e.g. MZN -> USDT -> ZAR -> USDT -> MZN. Positive
+ * means the loop nets more than it started with right now (a real
+ * arbitrage window); negative (the norm) is the cost of crossing the
+ * spread twice. Multiplication is commutative, so this is the same number
+ * regardless of which currency is called the "start" - see CurrencyCycle.tsx.
+ */
+export function cycleEfficiencyPct(args: { fiatABuy: number; fiatASell: number; fiatBBuy: number; fiatBSell: number }): number {
+  const { fiatABuy, fiatASell, fiatBBuy, fiatBSell } = args;
+  const cycleRatio = (fiatBSell * fiatASell) / (fiatABuy * fiatBBuy);
+  return (cycleRatio - 1) * 100;
+}

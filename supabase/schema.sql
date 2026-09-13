@@ -175,9 +175,14 @@ create table if not exists p2p_manager.alerts (
   type text not null,
   condition jsonb not null,
   active boolean not null default true,
+  is_triggered boolean not null default false,
   last_triggered_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+-- Table predates this column - explicit ALTER so it lands on the already
+-- deployed database too, not just fresh installs.
+alter table p2p_manager.alerts add column if not exists is_triggered boolean not null default false;
 
 -- ---------------------------------------------------------------------------
 -- notifications

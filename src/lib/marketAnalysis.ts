@@ -1,6 +1,7 @@
 import { query } from '@/lib/db';
 import { fetchP2PSnapshot } from '@/lib/binancePublicP2P';
 import { sendPush } from '@/lib/messagingClient';
+import { evaluateAlerts } from '@/lib/alerts';
 
 /**
  * The pairs this app actively tracks. USDT/MZN is the user's primary market;
@@ -191,6 +192,12 @@ export async function runMarketSync(): Promise<MarketSyncResult> {
         errors.push(`${asset}/${fiat}/${side}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+  }
+
+  try {
+    await evaluateAlerts(checked);
+  } catch (err) {
+    errors.push(`alerts: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   return { checked, reversals, errors };

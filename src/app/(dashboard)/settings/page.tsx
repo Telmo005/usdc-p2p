@@ -1,8 +1,10 @@
-import { UserCircle, Link2, Construction } from 'lucide-react';
+import { UserCircle, Link2, BellRing } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
-import { query } from '@/lib/db';
+import { query, getMarketSeries } from '@/lib/db';
+import { getUserAlerts } from '@/lib/alerts';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
+import { AlertsPanel } from '@/components/AlertsPanel';
 
 export default async function SettingsPage() {
   const { user, profile } = await requireUser();
@@ -12,11 +14,14 @@ export default async function SettingsPage() {
     [user.id]
   );
 
+  const [alerts, marketSeries] = await Promise.all([getUserAlerts(user.id), getMarketSeries()]);
+  const marketPairs = marketSeries.map((s) => ({ asset: s.asset, fiat: s.fiat, buyPrice: s.lastBuy, sellPrice: s.lastSell }));
+
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+    <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <div>
         <h1 className="text-xl font-bold">Configurações</h1>
-        <p className="mt-1 text-sm text-muted">Conta e ligação com a Binance.</p>
+        <p className="mt-1 text-sm text-muted">Conta, ligação com a Binance e alertas.</p>
       </div>
 
       <SectionCard title="Conta" icon={UserCircle}>
@@ -46,8 +51,16 @@ export default async function SettingsPage() {
         )}
       </SectionCard>
 
-      <SectionCard title="Em breve" icon={Construction} muted>
-        <p className="text-sm text-muted">Métodos de pagamento, notificações e alertas personalizados ficam para a próxima fase.</p>
+      <SectionCard
+        title="Alertas personalizados"
+        icon={BellRing}
+        subtitle="Avaliados a cada corrida da sincronização de mercado, com base nos preços P2P reais. Avisa quando o preço de um par passar de um valor, ou quando surgir uma janela real de arbitragem no ciclo MZN⇄ZAR."
+      >
+        {marketPairs.length === 0 ? (
+          <p className="text-sm text-muted">Ainda sem dados de mercado suficientes para criar alertas.</p>
+        ) : (
+          <AlertsPanel alerts={alerts} pairs={marketPairs} />
+        )}
       </SectionCard>
     </div>
   );

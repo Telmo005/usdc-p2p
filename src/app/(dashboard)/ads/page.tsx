@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Megaphone } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
-import { fetchP2PSnapshot } from '@/lib/binancePublicP2P';
+import { fetchFullP2POrderBook } from '@/lib/binancePublicP2P';
 import { getCounterpartyNicknameMap } from '@/lib/customers';
 import { getWatchedAdvertiserNicknames } from '@/lib/watchlist';
 import { SectionCard } from '@/components/ui/SectionCard';
@@ -21,7 +21,7 @@ export default async function AdsPage() {
     TRACKED_PAIRS.flatMap(({ asset, fiat }) =>
       SIDES.map(async (side): Promise<AdBook> => {
         try {
-          const snapshot = await fetchP2PSnapshot(asset, fiat, side, 20);
+          const snapshot = await fetchFullP2POrderBook(asset, fiat, side);
           return { asset, fiat, side, ads: snapshot?.ads ?? [], error: null, fetchedAt: Date.now() };
         } catch (err) {
           return { asset, fiat, side, ads: null, error: err instanceof Error ? err.message : 'Falha ao ler o mercado.', fetchedAt: Date.now() };

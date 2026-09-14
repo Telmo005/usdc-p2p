@@ -48,12 +48,30 @@ function AdPickerList({
   onFavoritesOnly: () => void;
   onFeeFreeOnly: () => void;
 }) {
+  const [search, setSearch] = useState('');
   const hasFavorites = ads.some((a) => watchedSet.has(a.advertiserNickname));
   const hasFeeFree = ads.some((a) => a.hasNonMobileMoneyMethod);
+  // The book is now the real full order book (fetchFullP2POrderBook), not
+  // just the first 20 - "Todos"/"Nenhum" etc. always act on every real ad
+  // regardless of the search text below; search only narrows what's shown.
+  const searchTerm = search.trim().toLowerCase();
+  const visibleAds = searchTerm ? ads.filter((a) => a.advertiserNickname.toLowerCase().includes(searchTerm)) : ads;
   return (
     <div className="flex-1 rounded-lg border border-border">
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-background px-3 py-2">
-        <span className="text-xs text-muted">{ads.length} anúncios reais</span>
+      <div className="flex flex-col gap-2 border-b border-border bg-background px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted">{ads.length} anúncios reais</span>
+          <div className="relative">
+            <Search size={12} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Pesquisar..."
+              className="w-32 rounded-md border border-border bg-surface py-1 pl-6 pr-2 text-[11px] outline-none focus:border-accent"
+            />
+          </div>
+        </div>
         <div className="flex flex-wrap justify-end gap-1.5">
           <button type="button" onClick={onSelectAll} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted hover:text-foreground">
             Todos
@@ -75,9 +93,11 @@ function AdPickerList({
       </div>
       {ads.length === 0 ? (
         <p className="p-3 text-xs text-muted">Sem anúncios reais neste momento.</p>
+      ) : visibleAds.length === 0 ? (
+        <p className="p-3 text-xs text-muted">Nenhum anunciante corresponde a &quot;{search}&quot;.</p>
       ) : (
         <div className="flex max-h-64 flex-col divide-y divide-border overflow-y-auto">
-          {ads.map((ad) => {
+          {visibleAds.map((ad) => {
             const watched = watchedSet.has(ad.advertiserNickname);
             const { compatible, reason } = checkAdCompatibility(ad, targetFiat);
             const disabledByBudget = budgetMode === 'respect_budget' && !compatible;

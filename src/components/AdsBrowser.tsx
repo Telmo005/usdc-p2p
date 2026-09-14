@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronRight, RefreshCw, Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, Search, Star } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
 import { DataTag } from '@/components/DataTag';
@@ -163,6 +163,7 @@ export function AdsBrowser({
   const [pair, setPair] = useState(pairs[0] ?? '');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [expandedAdvNo, setExpandedAdvNo] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
   const watchedSet = useMemo(() => new Set(watchedAdvertisers), [watchedAdvertisers]);
 
   // Manual/auto refresh (Phase 17) - same "additive override, freshest
@@ -184,6 +185,12 @@ export function AdsBrowser({
   // 'buy' shows the ads I'd pay to) and only MZN has a real M-Pesa/e-Mola
   // withdrawal fee to avoid in the first place (lib/mpesaFees.ts).
   const showFeeFree = side === 'buy' && fiat === 'MZN';
+
+  // Every real ad is now fetched (fetchFullP2POrderBook paginates through
+  // the whole book, not just the first 20) - with 50-100+ advertisers on a
+  // busy pair, finding one specific person needs a filter, not scrolling.
+  const searchTerm = search.trim().toLowerCase();
+  const filteredAds = book?.ads ? (searchTerm ? book.ads.filter((a) => a.advertiserNickname.toLowerCase().includes(searchTerm)) : book.ads) : null;
 
   const toggle = (advNo: string) => setExpandedAdvNo((cur) => (cur === advNo ? null : advNo));
 
@@ -251,8 +258,21 @@ export function AdsBrowser({
           {side === 'buy'
             ? `Anúncios de quem está a vender ${asset} - é a estes preços que compras.`
             : `Anúncios de quem está a comprar ${asset} - é a estes preços que vendes.`}
+          {book?.ads && book.ads.length > 0 && ` ${book.ads.length} anúncios reais.`}
         </p>
         <div className="flex flex-wrap items-center gap-3">
+          {book?.ads && book.ads.length > 0 && (
+            <div className="relative">
+              <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Pesquisar anunciante..."
+                className="w-44 rounded-lg border border-border bg-background py-2 pl-8 pr-3 text-xs outline-none focus:border-accent"
+              />
+            </div>
+          )}
           {book && !book.error && <DataTag source="binance_public" fetchedAt={book.fetchedAt} />}
           <button
             type="button"
@@ -286,6 +306,8 @@ export function AdsBrowser({
           <ErrorBanner message={book?.error ?? 'Sem dados para este par.'} />
         ) : !book.ads || book.ads.length === 0 ? (
           <EmptyState title="Sem anúncios ativos agora" description="O livro de ofertas para este par/lado está vazio neste momento." />
+        ) : !filteredAds || filteredAds.length === 0 ? (
+          <EmptyState title="Nenhum anunciante corresponde à pesquisa" description={`"${search}" não corresponde a nenhum dos ${book.ads.length} anúncios reais deste par/lado.`} />
         ) : (
           <>
             <div className="hidden overflow-x-auto md:block">
@@ -301,7 +323,7 @@ export function AdsBrowser({
                   </tr>
                 </thead>
                 <tbody>
-                  {book.ads.map((ad) => {
+                  {filteredAds.map((ad) => {
                     const expanded = expandedAdvNo === ad.advNo;
                     return (
                       <Fragment key={ad.advNo}>

@@ -92,17 +92,20 @@ function mapAd(row: RawAdRow): P2PAd {
 }
 
 /**
- * Fetches the top `rows` ads for one side of the book. Returns null (never
- * throws) when Binance returns no ads for this pair right now - a market
- * with zero live ads is real information, not an error, and callers decide
- * how to treat it.
+ * Fetches one page of `rows` ads for one side of the book (Binance caps
+ * `rows` at 20 per page regardless of what's requested - confirmed live:
+ * asking for 50 in one page returns nothing, but page 2 with rows=20
+ * returns a real second page). Returns null (never throws) when Binance
+ * returns no ads for this pair/page right now - a market with zero live
+ * ads is real information, not an error, and callers decide how to treat
+ * it.
  */
-export async function fetchP2PSnapshot(asset: string, fiat: string, side: 'buy' | 'sell', rows = 10): Promise<P2PSnapshot | null> {
+export async function fetchP2PSnapshot(asset: string, fiat: string, side: 'buy' | 'sell', rows = 10, page = 1): Promise<P2PSnapshot | null> {
   const res = await fetch(BASE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      page: 1,
+      page,
       rows,
       asset,
       fiat,
@@ -126,4 +129,34 @@ export async function fetchP2PSnapshot(asset: string, fiat: string, side: 'buy' 
   const avgTopPrice = top5.reduce((sum, a) => sum + a.price, 0) / top5.length;
 
   return { bestPrice: ads[0].price, avgTopPrice, sampleSize: ads.length, ads };
+}
+
+const FULL_BOOK_PAGE_SIZE = 20; // Binance's own real per-page cap
+const FULL_BOOK_MAX_PAGES = 6; // 120 ads is already far beyond what's usable - a real ceiling, not a guess at "everyone"
+
+/**
+ * "Não vejo todos os anunciantes" - fetchP2PSnapshot alone only ever
+ * returns the first page (confirmed live: MZN/buy has 70 real ads across
+ * 4 pages, but a single rows=20 call only sees the first 20). This walks
+ * real pages until Binance returns a short page (the real end of the
+ * book) or FULL_BOOK_MAX_PAGES is hit, and concatenates the real ads -
+ * used wherever a user actually browses/picks a specific advertiser
+ * (Anúncios, the multi-ad simulator), not for the aggregate cron tick
+ * (runMarketSync), which only ever needed the top few for its average.
+ */
+export async function fetchFullP2POrderBook(asset: string, fiat: string, side: 'buy' | 'sell'): Promise<P2PSnapshot | null> {
+  const allAds: P2PAd[] = [];
+  for (let page = 1; page <= FULL_BOOK_MAX_PAGES; page++) {
+    const snapshot = await fetchP2PSnapshot(asset, fiat, side, FULL_BOOK_PAGE_SIZE, page);
+    if (!snapshot || snapshot.ads.length === 0) break;
+    allAds.push(...snapshot.ads);
+    if (snapshot.ads.length < FULL_BOOK_PAGE_SIZE) break; // short page = real end of the book
+  }
+
+  if (allAds.length === 0) return null;
+
+  const top5 = allAds.slice(0, 5);
+  const avgTopPrice = top5.reduce((sum, a) => sum + a.price, 0) / top5.length;
+
+  return { bestPrice: allAds[0].price, avgTopPrice, sampleSize: allAds.length, ads: allAds };
 }

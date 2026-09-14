@@ -1,4 +1,4 @@
-import { fetchP2PSnapshot, type P2PAd } from '@/lib/binancePublicP2P';
+import { fetchFullP2POrderBook, type P2PAd } from '@/lib/binancePublicP2P';
 import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
 import { findBestAmount, type OptimizationResult } from '@/lib/orderBookSimulator';
 import type { CapitalSettings } from '@/lib/capitalSettings';
@@ -21,11 +21,13 @@ export type PairBooks = {
 /** Real individual ads (not the aggregate avg_top_price) for both legs of
  *  one pair - shared by the manual multi-ad simulator (Simulação) and the
  *  auto-search engine below (Oportunidades), so both price against the
- *  exact same live book. */
+ *  exact same live book. Paginates through the real full order book
+ *  (fetchFullP2POrderBook), not just the first 20 - a merchant search
+ *  worth trusting has to see everyone actually posting, not a sample. */
 export async function fetchPairBooks(asset: string, fiat: string): Promise<PairBooks> {
   const fetchedAt = Date.now();
   try {
-    const [buySnap, sellSnap] = await Promise.all([fetchP2PSnapshot(asset, fiat, 'buy', 20), fetchP2PSnapshot(asset, fiat, 'sell', 20)]);
+    const [buySnap, sellSnap] = await Promise.all([fetchFullP2POrderBook(asset, fiat, 'buy'), fetchFullP2POrderBook(asset, fiat, 'sell')]);
     return { asset, fiat, buyAds: buySnap?.ads ?? [], sellAds: sellSnap?.ads ?? [], fetchedAt, error: null };
   } catch (err) {
     return { asset, fiat, buyAds: [], sellAds: [], fetchedAt, error: err instanceof Error ? err.message : 'Falha ao ler o mercado.' };

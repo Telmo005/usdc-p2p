@@ -64,6 +64,11 @@ export function MultiAdSimulator({
   }
 
   const buyShortfall = plan ? Math.max(0, targetFiat - plan.buy.filledFiat) : 0;
+  // Câmbio efetivo: quanto cada USDT custou/rendeu de facto, taxas incluídas -
+  // não o preço de tabela de um único anúncio, o preço real médio pago aos
+  // vários comerciantes (buy.avgPrice/sell.avgPrice) com todos os custos
+  // (configurados + M-Pesa) somados ao lado da compra, onde são cobrados.
+  const effectiveBuyRate = plan && plan.buy.filledQuantity > 0 ? (plan.buy.filledFiat + plan.configuredCosts + plan.mpesaFee) / plan.buy.filledQuantity : null;
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5">
@@ -162,6 +167,37 @@ export function MultiAdSimulator({
             <div className="mb-3 flex justify-end">
               <DataTag source="simulated" />
             </div>
+
+            {plan.buy.avgPrice != null && plan.sell.avgPrice != null && (
+              <div className="mb-4 flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-border pb-4">
+                <div>
+                  <div className="text-xs text-muted">Câmbio de compra</div>
+                  <div className="font-mono text-sm">
+                    {fmt(plan.buy.avgPrice, 4)} {pair.fiat}/{pair.asset}
+                  </div>
+                  {effectiveBuyRate != null && (
+                    <div className="text-xs text-muted">
+                      com taxas: <span className="font-mono font-semibold text-foreground">{fmt(effectiveBuyRate, 4)} {pair.fiat}/{pair.asset}</span>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs text-muted">Câmbio de venda</div>
+                  <div className="font-mono text-sm font-semibold">
+                    {fmt(plan.sell.avgPrice, 4)} {pair.fiat}/{pair.asset}
+                  </div>
+                </div>
+                {effectiveBuyRate != null && (
+                  <div>
+                    <div className="text-xs text-muted">Câmbio final (com taxas)</div>
+                    <div className={`font-mono text-sm font-semibold ${plan.sell.avgPrice >= effectiveBuyRate ? 'text-positive' : 'text-negative'}`}>
+                      {fmt(effectiveBuyRate, 4)} → {fmt(plan.sell.avgPrice, 4)} {pair.fiat}/{pair.asset}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
               <div>
                 <div className="text-xs text-muted">Resultado bruto</div>

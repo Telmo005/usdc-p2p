@@ -74,7 +74,14 @@ export default async function OpportunitiesPage() {
           <div className="flex flex-col gap-4">
             {profitableMultiAd.map((o) => {
               const { result } = o;
-              const yieldPct = (result.bestPlan.netResult / result.bestAmount) * 100;
+              const { bestPlan } = result;
+              const yieldPct = (bestPlan.netResult / result.bestAmount) * 100;
+              // Câmbio efetivo: o preço real médio pago/recebido pelos vários
+              // comerciantes, com todos os custos (configurados + M-Pesa)
+              // somados ao lado da compra, onde são cobrados - não o preço
+              // de tabela de um único anúncio.
+              const effectiveBuyRate =
+                bestPlan.buy.filledQuantity > 0 ? (bestPlan.buy.filledFiat + bestPlan.configuredCosts + bestPlan.mpesaFee) / bestPlan.buy.filledQuantity : null;
               return (
                 <div key={`${o.asset}-${o.fiat}`} className="rounded-lg border border-positive/40 bg-positive/5 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -85,10 +92,19 @@ export default async function OpportunitiesPage() {
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1">
                     <span className="font-mono text-lg font-semibold text-positive">
-                      +{fmt(result.bestPlan.netResult)} {o.fiat}
+                      +{fmt(bestPlan.netResult)} {o.fiat}
                     </span>
                     <span className="text-xs text-muted">rendimento {fmt(yieldPct)}% sobre o valor investido</span>
                   </div>
+                  {effectiveBuyRate != null && bestPlan.sell.avgPrice != null && (
+                    <div className="mt-2 text-xs text-muted">
+                      Câmbio final com taxas:{' '}
+                      <span className="font-mono font-semibold text-foreground">
+                        {fmt(effectiveBuyRate, 4)} → {fmt(bestPlan.sell.avgPrice, 4)} {o.fiat}/{o.asset}
+                      </span>{' '}
+                      (compra {fmt(bestPlan.buy.avgPrice ?? 0, 4)} {o.fiat}/{o.asset} sem taxas)
+                    </div>
+                  )}
                   <ul className="mt-2 flex list-disc flex-col gap-1 pl-4 text-xs text-muted">
                     <li>
                       Testei {result.evaluated} valores reais entre {fmt(result.candidateRange.min)} e {fmt(result.candidateRange.max)}{' '}

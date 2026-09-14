@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { planRoundTrip, findBestAmount, type FillStep, type OptimizationResult } from '@/lib/orderBookSimulator';
-import { Search, X } from 'lucide-react';
+import Link from 'next/link';
+import { planRoundTrip } from '@/lib/orderBookSimulator';
+import { X, Search } from 'lucide-react';
 import type { P2PAd } from '@/lib/binancePublicP2P';
 import type { CapitalSettings } from '@/lib/capitalSettings';
-import { getMPesaWithdrawalFee } from '@/lib/mpesaFees';
+import { FillStepList } from '@/components/FillStepList';
 import { DataTag } from '@/components/DataTag';
 
 export type PairBooks = { asset: string; fiat: string; buyAds: P2PAd[]; sellAds: P2PAd[]; fetchedAt: number };
@@ -14,54 +15,31 @@ function fmt(n: number, maxFrac = 2) {
   return n.toLocaleString('pt-PT', { maximumFractionDigits: maxFrac });
 }
 
-function StepList({ steps, asset, fiat, showMpesaFee }: { steps: FillStep[]; asset: string; fiat: string; showMpesaFee?: boolean }) {
-  if (steps.length === 0) {
-    return <p className="text-xs text-muted">Sem anúncios que sirvam para este valor neste momento.</p>;
-  }
-  return (
-    <div className="flex flex-col gap-1.5">
-      {steps.map((s) => {
-        // Cada comerciante cobra o seu próprio custo de levantamento -
-        // dividir por vários anunciantes não é o mesmo que levantar tudo
-        // de uma vez (o tarifário é escalonado, ver lib/mpesaFees.ts).
-        const stepFee = showMpesaFee ? getMPesaWithdrawalFee(s.fiatValue) : 0;
-        return (
-          <div key={s.advNo} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2.5 text-xs">
-            <span className="flex items-center gap-1.5">
-              {s.advertiserNickname}
-              {s.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
-            </span>
-            <span className="font-mono">
-              {fmt(s.quantity, 4)} {asset} a {fmt(s.price, 4)} {fiat} = {fmt(s.fiatValue)} {fiat}
-              {stepFee > 0 && <span className="text-negative"> (+{fmt(stepFee)} {fiat} levantamento)</span>}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /**
  * "With whom do I buy, with whom do I sell, what's the real profit" - for
  * amounts no single advertiser can fill alone. Every other simulator here
  * prices a trade at one aggregate number; this walks the real ad list
  * (already best-price-first) and builds a real multi-advertiser plan
- * instead (see lib/orderBookSimulator.ts).
+ * instead (see lib/orderBookSimulator.ts). Manual only - "qual seria o
+ * valor ideal" is a search, and that search now lives in the Opportunity
+ * Center (lib/multiAdOpportunity.ts), not here.
  */
 export function MultiAdSimulator({
   pairs,
   capitalSettings,
   initialAmount,
+  initialPairIndex,
 }: {
   pairs: PairBooks[];
   capitalSettings: CapitalSettings;
   initialAmount?: number;
+  initialPairIndex?: number;
 }) {
-  const [pairIdx, setPairIdx] = useState(0);
+  const [pairIdx, setPairIdx] = useState(
+    initialPairIndex != null && initialPairIndex >= 0 && initialPairIndex < pairs.length ? initialPairIndex : 0
+  );
   const [amount, setAmount] = useState(String(initialAmount ?? 1000));
   const [useMpesaFee, setUseMpesaFee] = useState(true);
-  const [searchResult, setSearchResult] = useState<OptimizationResult | null>(null);
 
   const pair = pairs[pairIdx];
   const targetFiat = Number(amount);
@@ -72,17 +50,9 @@ export function MultiAdSimulator({
     return planRoundTrip(pair.buyAds, pair.sellAds, targetFiat, capitalSettings, mpesaApplicable && useMpesaFee);
   }, [pair, targetFiat, capitalSettings, mpesaApplicable, useMpesaFee]);
 
-  const findIdealAmount = () => {
-    if (!pair) return;
-    const result = findBestAmount(pair.buyAds, pair.sellAds, capitalSettings, mpesaApplicable && useMpesaFee);
-    setAmount(String(result.bestAmount));
-    setSearchResult(result);
-  };
-
   const clearSimulation = () => {
     setAmount(String(initialAmount ?? 1000));
     setUseMpesaFee(true);
-    setSearchResult(null);
   };
 
   if (pairs.length === 0) {
@@ -101,6 +71,14 @@ export function MultiAdSimulator({
       <p className="mt-1 text-xs text-muted">
         Para um valor que nenhum anunciante sozinho consegue cobrir - usa os anúncios reais, um a um, não a média do mercado.
       </p>
+      <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+        <Search size={12} />
+        Não sabes que valor simular? Vê as combinações que o sistema já testou em{' '}
+        <Link href="/opportunities" className="font-medium text-accent hover:underline">
+          Oportunidades
+        </Link>
+        .
+      </p>
 
       <div className="mt-4 flex flex-wrap items-end gap-4">
         <label className="flex flex-col gap-1.5 text-sm">
@@ -110,23 +88,12 @@ export function MultiAdSimulator({
               type="number"
               step="any"
               value={amount}
-              onChange={(e) => {
-                setAmount(e.target.value);
-                setSearchResult(null);
-              }}
+              onChange={(e) => setAmount(e.target.value)}
               className="w-40 rounded-lg border border-border bg-background px-3 py-2.5 text-lg font-semibold outline-none focus:border-accent"
             />
             <span className="text-sm text-muted">{pair.fiat}</span>
           </div>
         </label>
-
-        <button
-          type="button"
-          onClick={findIdealAmount}
-          className="flex items-center gap-1.5 rounded-lg border border-accent/50 px-3 py-2 text-xs text-accent hover:bg-accent/10"
-        >
-          <Search size={13} /> Encontrar valor ideal
-        </button>
 
         <button
           type="button"
@@ -163,21 +130,13 @@ export function MultiAdSimulator({
         </label>
       )}
 
-      {searchResult && (
-        <p className="mt-2 text-xs text-muted">
-          Testei {searchResult.evaluated} valores reais entre {fmt(searchResult.candidateRange.min)} e{' '}
-          {fmt(searchResult.candidateRange.max)} {pair.fiat} (passos de {searchResult.candidateRange.step} {pair.fiat}) - este foi o
-          que deu mais lucro líquido real com os anúncios visíveis agora.
-        </p>
-      )}
-
       {plan && (
         <>
           <div className="mt-4">
             <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">
               Comprar de ({fmt(plan.buy.filledFiat)} {pair.fiat} de {fmt(targetFiat)} {pair.fiat})
             </div>
-            <StepList steps={plan.buy.steps} asset={pair.asset} fiat={pair.fiat} showMpesaFee={mpesaApplicable && useMpesaFee} />
+            <FillStepList steps={plan.buy.steps} asset={pair.asset} fiat={pair.fiat} showMpesaFee={mpesaApplicable && useMpesaFee} />
             {buyShortfall > 0 && (
               <p className="mt-1.5 text-xs text-negative">
                 Só consegui cobrir {fmt(plan.buy.filledFiat)} de {fmt(targetFiat)} {pair.fiat} com os anúncios visíveis agora -
@@ -190,7 +149,7 @@ export function MultiAdSimulator({
             <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">
               Vender para ({fmt(plan.sell.filledQuantity, 4)} {pair.asset})
             </div>
-            <StepList steps={plan.sell.steps} asset={pair.asset} fiat={pair.fiat} />
+            <FillStepList steps={plan.sell.steps} asset={pair.asset} fiat={pair.fiat} />
             {plan.unsoldQuantity > 0 && (
               <p className="mt-1.5 text-xs text-negative">
                 {fmt(plan.unsoldQuantity, 4)} {pair.asset} comprados não têm comprador ao preço atual nos anúncios visíveis - ficam

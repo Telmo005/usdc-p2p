@@ -170,6 +170,13 @@ export type OptimizationResult = {
   bestPlan: RoundTripPlan;
   evaluated: number;
   candidateRange: { min: number; max: number; step: number };
+  /** False means every candidate amount in range lost money - `bestAmount`
+   *  is only "the least bad", never a recommendation to act on. */
+  isProfitable: boolean;
+  /** True when the ideal amount is the top of the searched range (the
+   *  book's own real capacity or the 30k ceiling) rather than a genuine
+   *  interior optimum - more visible liquidity could push it higher. */
+  hitCeiling: boolean;
 };
 
 const DEFAULT_MIN_AMOUNT = 600; // Binance's own typical per-order minimum for these ads
@@ -217,5 +224,12 @@ export function findBestAmount(
     }
   }
 
-  return { bestAmount, bestPlan, evaluated, candidateRange: { min: minAmount, max: maxAmount, step } };
+  return {
+    bestAmount,
+    bestPlan,
+    evaluated,
+    candidateRange: { min: minAmount, max: maxAmount, step },
+    isProfitable: bestPlan.netResult > 0,
+    hitCeiling: bestAmount === maxAmount,
+  };
 }

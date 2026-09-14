@@ -6,20 +6,29 @@ import { getRealWalletSnapshot } from '@/lib/wallet';
 import { getMidRates } from '@/lib/exchangeRates';
 import { getOpportunities } from '@/lib/opportunities';
 import { getMultiAdOpportunities } from '@/lib/multiAdOpportunity';
+import { getWatchedAdvertiserNicknames } from '@/lib/watchlist';
 import { fromProfile } from '@/lib/capitalSettings';
 import { OpportunityCard } from '@/components/OpportunityCard';
 import { FillStepList } from '@/components/FillStepList';
 import { DataTag } from '@/components/DataTag';
 import { RefreshButton } from '@/components/RefreshButton';
+import { OpportunityFilters } from '@/components/OpportunityFilters';
 import { SectionCard } from '@/components/ui/SectionCard';
 
 function fmt(n: number, maxFrac = 2) {
   return n.toLocaleString('pt-PT', { maximumFractionDigits: maxFrac });
 }
 
-export default async function OpportunitiesPage() {
-  const { profile } = await requireUser();
+export default async function OpportunitiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ favoritesOnly?: string; fees?: string }>;
+}) {
+  const { user, profile } = await requireUser();
   const capitalSettings = fromProfile(profile);
+  const sp = await searchParams;
+  const favoritesOnly = sp.favoritesOnly === '1';
+  const includeFees = sp.fees !== '0';
 
   const marketSeries = await getMarketSeries();
   const { mznRate, zarRate } = getMidRates(marketSeries);
@@ -32,9 +41,14 @@ export default async function OpportunitiesPage() {
     // reference amount, same as when referenceMode is 'manual'.
   }
 
+  const watchedAdvertisers = await getWatchedAdvertiserNicknames(user.id);
+
   const [{ opportunities, monitoredCyclePct, monitoredPairs }, multiAdOpportunities] = await Promise.all([
     getOpportunities(capitalSettings, realTotalMzn),
-    getMultiAdOpportunities(capitalSettings),
+    getMultiAdOpportunities(capitalSettings, {
+      favoriteNicknames: favoritesOnly ? watchedAdvertisers : undefined,
+      includeFees,
+    }),
   ]);
 
   const profitableMultiAd = multiAdOpportunities.filter((o) => o.result.isProfitable);
@@ -63,13 +77,21 @@ export default async function OpportunitiesPage() {
         icon={Search}
         subtitle="Procura real entre 600 e 30 000 MZN (passo de 1 MZN, nunca um valor saltado) nos anúncios reais de compra e venda de cada par - só aparece como recomendação quando o resultado líquido real é positivo."
       >
+        <div className="mb-3">
+          <OpportunityFilters favoritesOnly={favoritesOnly} includeFees={includeFees} hasFavorites={watchedAdvertisers.length > 0} />
+        </div>
+
+        {favoritesOnly && watchedAdvertisers.length === 0 && (
+          <p className="mb-3 text-xs text-info">Ainda não tens comerciantes favoritos - marca alguns em Anúncios para usar este filtro.</p>
+        )}
+
         {profitableMultiAd.length === 0 ? (
           <p className="text-sm text-muted">
             {unprofitableMultiAd.length > 0
               ? `${unprofitableMultiAd
                   .map(
                     (o) =>
-                      `USDT/${o.fiat} (testei ${o.result.evaluated} valores reais entre ${fmt(o.result.candidateRange.min)} e ${fmt(o.result.candidateRange.max)} ${o.fiat} contra ${o.buyAdsCount} anúncios de compra e ${o.sellAdsCount} de venda)`
+                      `USDT/${o.fiat} (testei ${o.result.evaluated} valores reais entre ${fmt(o.result.candidateRange.min)} e ${fmt(o.result.candidateRange.max)} ${o.fiat} contra ${o.buyAdsCount} anúncios de compra${favoritesOnly ? ' favoritos' : ''} e ${o.sellAdsCount} de venda${favoritesOnly ? ' favoritos' : ''})`
                   )
                   .join('; ')} - nenhuma combinação deu lucro líquido positivo neste momento.`
               : 'Sem anúncios reais suficientes neste momento para procurar um valor ideal.'}
@@ -124,7 +146,7 @@ export default async function OpportunitiesPage() {
                   <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Comprar de</div>
-                      <FillStepList steps={result.bestPlan.buy.steps} asset={o.asset} fiat={o.fiat} showMpesaFee={o.fiat === 'MZN'} />
+                      <FillStepList steps={result.bestPlan.buy.steps} asset={o.asset} fiat={o.fiat} showMpesaFee={includeFees && o.fiat === 'MZN'} />
                     </div>
                     <div>
                       <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Vender para</div>

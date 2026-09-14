@@ -57,12 +57,26 @@ const SEARCH_STEP = 1;
  * pair - one entry per pair regardless of outcome; callers decide whether
  * to show it (only ever surface a POSITIVE net result as a recommendation
  * - see OptimizationResult.isProfitable).
+ *
+ * `favoriteNicknames`, when given, restricts the search to only those
+ * real advertisers - "só trabalhar com favoritos." `includeFees` lets the
+ * user see the search with or without the real M-Pesa/e-Mola withdrawal
+ * fee factored in (still only ever applied for MZN); defaults to true,
+ * matching the fee-aware behavior this always had before it was
+ * user-controllable.
  */
-export async function getMultiAdOpportunities(costs: CapitalSettings): Promise<MultiAdOpportunity[]> {
+export async function getMultiAdOpportunities(
+  costs: CapitalSettings,
+  opts?: { favoriteNicknames?: string[]; includeFees?: boolean }
+): Promise<MultiAdOpportunity[]> {
   const books = await Promise.all(TRACKED_PAIRS.map((p) => fetchPairBooks(p.asset, p.fiat)));
+  const favoriteNicknames = opts?.favoriteNicknames;
+  const includeFees = opts?.includeFees ?? true;
 
   return books.map((b) => {
-    const result = findBestAmount(b.buyAds, b.sellAds, costs, b.fiat === 'MZN', {
+    const buyAds = favoriteNicknames ? b.buyAds.filter((a) => favoriteNicknames.includes(a.advertiserNickname)) : b.buyAds;
+    const sellAds = favoriteNicknames ? b.sellAds.filter((a) => favoriteNicknames.includes(a.advertiserNickname)) : b.sellAds;
+    const result = findBestAmount(buyAds, sellAds, costs, includeFees && b.fiat === 'MZN', {
       minAmount: SEARCH_MIN_AMOUNT,
       maxAmount: SEARCH_MAX_AMOUNT,
       step: SEARCH_STEP,
@@ -72,8 +86,8 @@ export async function getMultiAdOpportunities(costs: CapitalSettings): Promise<M
       fiat: b.fiat,
       result,
       booksFetchedAt: b.fetchedAt,
-      buyAdsCount: b.buyAds.length,
-      sellAdsCount: b.sellAds.length,
+      buyAdsCount: buyAds.length,
+      sellAdsCount: sellAds.length,
     };
   });
 }

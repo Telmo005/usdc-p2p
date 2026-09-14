@@ -21,6 +21,10 @@ export type FillStep = {
   price: number;
   quantity: number;
   fiatValue: number;
+  /** From the source ad (lib/binancePublicP2P.ts) - true when this specific
+   *  ad offers a real way to pay other than M-Pesa/e-Mola cash-out, so no
+   *  withdrawal fee applies to this step at all (see mpesaFeeForSteps). */
+  hasNonMobileMoneyMethod: boolean;
 };
 
 export type FillResult = {
@@ -58,6 +62,7 @@ export function fillByFiatAmount(ads: P2PAd[], targetFiat: number): FillResult {
       price: ad.price,
       quantity: affordable / ad.price,
       fiatValue: affordable,
+      hasNonMobileMoneyMethod: ad.hasNonMobileMoneyMethod,
     });
     remaining -= affordable;
   }
@@ -87,6 +92,7 @@ export function fillByQuantity(ads: P2PAd[], targetQuantity: number): FillResult
       price: ad.price,
       quantity: affordableQty,
       fiatValue,
+      hasNonMobileMoneyMethod: ad.hasNonMobileMoneyMethod,
     });
     remaining -= affordableQty;
   }
@@ -118,9 +124,12 @@ export type RoundTripPlan = {
  *  order - the tariff is tiered, so this is NOT the same as one fee on the
  *  combined total (splitting across N merchants means N separate real
  *  cash withdrawals, each falling into its own bracket). Summed per step,
- *  never approximated from the total. */
+ *  never approximated from the total. A step whose ad offers a real
+ *  non-mobile-money payment method (a bank transfer, say) is skipped
+ *  entirely - that specific trade never needed a cash withdrawal, so
+ *  there's no fee to charge it. */
 export function mpesaFeeForSteps(steps: FillStep[]): number {
-  return steps.reduce((sum, s) => sum + getMPesaWithdrawalFee(s.fiatValue), 0);
+  return steps.reduce((sum, s) => sum + (s.hasNonMobileMoneyMethod ? 0 : getMPesaWithdrawalFee(s.fiatValue)), 0);
 }
 
 /**

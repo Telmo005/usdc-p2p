@@ -13,6 +13,15 @@
  */
 const BASE_URL = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
 
+// Confirmed via Binance's own live MZN order book (both trade types) - the
+// only two mobile-money cash-out methods seen there. An ad offering any
+// OTHER method (a bank transfer, say) lets the buyer pay straight from a
+// bank balance - no cash withdrawal, no real M-Pesa/e-Mola fee for that
+// trade (see hasNonMobileMoneyMethod below, and lib/mpesaFees.ts). Not
+// claimed to be an exhaustive list of every mobile-money method Binance
+// could ever show - just the two actually observed live.
+const MOBILE_MONEY_IDENTIFIERS = new Set(['MpesaVodaphone', 'Emola']);
+
 export type P2PAd = {
   advNo: string;
   price: number;
@@ -21,6 +30,10 @@ export type P2PAd = {
   availableQuantity: number;
   payTimeLimitMinutes: number | null;
   tradeMethods: string[];
+  /** True when at least one of this ad's real payment methods isn't
+   *  mobile-money cash-out - the buyer has a real way to pay this specific
+   *  ad without the M-Pesa/e-Mola withdrawal fee applying at all. */
+  hasNonMobileMoneyMethod: boolean;
   advertiserNickname: string;
   advertiserOrderCount: number | null;
   advertiserFinishRate: number | null;
@@ -69,6 +82,7 @@ function mapAd(row: RawAdRow): P2PAd {
     availableQuantity: Number(row.adv.tradableQuantity),
     payTimeLimitMinutes: row.adv.payTimeLimit ?? null,
     tradeMethods: row.adv.tradeMethods.map((m) => m.tradeMethodName || m.identifier),
+    hasNonMobileMoneyMethod: row.adv.tradeMethods.some((m) => !MOBILE_MONEY_IDENTIFIERS.has(m.identifier)),
     advertiserNickname: row.advertiser.nickName,
     advertiserOrderCount: row.advertiser.monthOrderCount,
     advertiserFinishRate: row.advertiser.monthFinishRate,

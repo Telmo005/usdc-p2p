@@ -21,31 +21,41 @@ function AdPickerList({
   asset,
   excludedAdvNos,
   watchedSet,
+  showFeeFreeAction,
   onToggle,
   onSelectAll,
   onFavoritesOnly,
+  onFeeFreeOnly,
 }: {
   ads: P2PAd[];
   fiat: string;
   asset: string;
   excludedAdvNos: Set<string>;
   watchedSet: Set<string>;
+  showFeeFreeAction: boolean;
   onToggle: (advNo: string) => void;
   onSelectAll: () => void;
   onFavoritesOnly: () => void;
+  onFeeFreeOnly: () => void;
 }) {
   const hasFavorites = ads.some((a) => watchedSet.has(a.advertiserNickname));
+  const hasFeeFree = ads.some((a) => a.hasNonMobileMoneyMethod);
   return (
     <div className="flex-1 rounded-lg border border-border">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-background px-3 py-2">
         <span className="text-xs text-muted">{ads.length} anúncios reais</span>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap justify-end gap-1.5">
           <button type="button" onClick={onSelectAll} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted hover:text-foreground">
             Todos
           </button>
           {hasFavorites && (
             <button type="button" onClick={onFavoritesOnly} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted hover:text-foreground">
               Só favoritos
+            </button>
+          )}
+          {showFeeFreeAction && hasFeeFree && (
+            <button type="button" onClick={onFeeFreeOnly} className="rounded-full border border-positive/40 px-2 py-0.5 text-[11px] text-positive hover:bg-positive/10">
+              Sem M-Pesa/e-Mola
             </button>
           )}
         </div>
@@ -64,6 +74,9 @@ function AdPickerList({
                 <span className="flex-1 truncate">
                   {ad.advertiserNickname}
                   {ad.advertiserIsMerchant && <span className="ml-1.5 rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
+                  {showFeeFreeAction && ad.hasNonMobileMoneyMethod && (
+                    <span className="ml-1.5 rounded bg-positive/10 px-1 py-0.5 text-[10px] text-positive">sem taxa</span>
+                  )}
                 </span>
                 <span className="shrink-0 font-mono font-semibold text-accent">
                   {fmt(ad.price, 4)} {fiat}
@@ -155,6 +168,17 @@ export function MultiAdSimulator({
       const next = new Set(prev);
       for (const a of ads) {
         if (watchedSet.has(a.advertiserNickname)) next.delete(a.advNo);
+        else next.add(a.advNo);
+      }
+      return next;
+    });
+  };
+
+  const feeFreeOnly = (ads: P2PAd[]) => {
+    setExcludedAdvNos((prev) => {
+      const next = new Set(prev);
+      for (const a of ads) {
+        if (a.hasNonMobileMoneyMethod) next.delete(a.advNo);
         else next.add(a.advNo);
       }
       return next;
@@ -265,9 +289,11 @@ export function MultiAdSimulator({
               asset={pair.asset}
               excludedAdvNos={excludedAdvNos}
               watchedSet={watchedSet}
+              showFeeFreeAction={mpesaApplicable}
               onToggle={toggleAd}
               onSelectAll={() => selectAll(pair.buyAds)}
               onFavoritesOnly={() => favoritesOnly(pair.buyAds)}
+              onFeeFreeOnly={() => feeFreeOnly(pair.buyAds)}
             />
           </div>
           <div className="flex-1">
@@ -278,9 +304,11 @@ export function MultiAdSimulator({
               asset={pair.asset}
               excludedAdvNos={excludedAdvNos}
               watchedSet={watchedSet}
+              showFeeFreeAction={false}
               onToggle={toggleAd}
               onSelectAll={() => selectAll(pair.sellAds)}
               onFavoritesOnly={() => favoritesOnly(pair.sellAds)}
+              onFeeFreeOnly={() => feeFreeOnly(pair.sellAds)}
             />
           </div>
         </div>

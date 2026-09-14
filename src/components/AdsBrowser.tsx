@@ -35,13 +35,18 @@ function WatchStarButton({ nickname, watched }: { nickname: string; watched: boo
   );
 }
 
-function AdvertiserLine({ ad, watched }: { ad: P2PAd; watched: boolean }) {
+function AdvertiserLine({ ad, watched, showFeeFree }: { ad: P2PAd; watched: boolean; showFeeFree: boolean }) {
   return (
     <>
       <div className="flex items-center gap-1.5">
         <WatchStarButton nickname={ad.advertiserNickname} watched={watched} />
         {ad.advertiserNickname}
         {ad.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
+        {showFeeFree && ad.hasNonMobileMoneyMethod && (
+          <span className="rounded bg-positive/10 px-1 py-0.5 text-[10px] text-positive" title="Aceita pagamento além de M-Pesa/e-Mola - sem taxa de levantamento">
+            sem taxa
+          </span>
+        )}
       </div>
       {(ad.advertiserOrderCount != null || ad.advertiserFinishRate != null) && (
         <div className="text-[11px] text-muted">
@@ -159,6 +164,10 @@ export function AdsBrowser({
 
   const book = books.find((b) => `${b.asset}/${b.fiat}` === pair && b.side === side);
   const [asset, fiat] = pair.split('/');
+  // "sem taxa" only means something when I'm the one paying cash (side
+  // 'buy' shows the ads I'd pay to) and only MZN has a real M-Pesa/e-Mola
+  // withdrawal fee to avoid in the first place (lib/mpesaFees.ts).
+  const showFeeFree = side === 'buy' && fiat === 'MZN';
 
   const toggle = (advNo: string) => setExpandedAdvNo((cur) => (cur === advNo ? null : advNo));
 
@@ -230,7 +239,7 @@ export function AdsBrowser({
                         <tr onClick={() => toggle(ad.advNo)} className="cursor-pointer border-t border-border hover:bg-surface-raised">
                           <td className="w-6 py-2 pl-1 text-muted">{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           <td className="py-2 pr-4">
-                            <AdvertiserLine ad={ad} watched={watchedSet.has(ad.advertiserNickname)} />
+                            <AdvertiserLine ad={ad} watched={watchedSet.has(ad.advertiserNickname)} showFeeFree={showFeeFree} />
                           </td>
                           <td className="py-2 pr-4 font-mono font-semibold text-accent">
                             {fmt(ad.price, 4)} {fiat}
@@ -275,6 +284,9 @@ export function AdsBrowser({
                           <WatchStarButton nickname={ad.advertiserNickname} watched={watchedSet.has(ad.advertiserNickname)} />
                           {ad.advertiserNickname}
                           {ad.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
+                          {showFeeFree && ad.hasNonMobileMoneyMethod && (
+                            <span className="rounded bg-positive/10 px-1 py-0.5 text-[10px] text-positive">sem taxa</span>
+                          )}
                         </span>
                         <span className="font-mono font-semibold text-accent">
                           {fmt(ad.price, 4)} {fiat}

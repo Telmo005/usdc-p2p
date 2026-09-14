@@ -511,16 +511,12 @@ export function MultiAdSimulator({
       </p>
 
       {mpesaApplicable && (
-        <label className={`mt-3 flex items-center gap-2 text-xs ${hasFeeChargingStep ? 'text-muted' : 'text-muted opacity-50'}`}>
-          <input
-            type="checkbox"
-            checked={useMpesaFee}
-            disabled={!hasFeeChargingStep}
-            onChange={(e) => setUseMpesaFee(e.target.checked)}
-            className="accent-accent"
-          />
+        <label className="mt-3 flex items-center gap-2 text-xs text-muted">
+          <input type="checkbox" checked={useMpesaFee} onChange={(e) => setUseMpesaFee(e.target.checked)} className="accent-accent" />
           Descontar taxa real de levantamento M-Pesa por comerciante (cada um cobra o seu próprio custo)
-          {!hasFeeChargingStep && ' - nenhum comerciante usado neste plano cobra esta taxa agora'}
+          {!hasFeeChargingStep && (
+            <span className="text-[11px] italic">- sem efeito agora: nenhum comerciante usado neste plano cobra esta taxa</span>
+          )}
         </label>
       )}
 

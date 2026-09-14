@@ -207,7 +207,12 @@ export function MultiAdSimulator({
     initialPairIndex != null && initialPairIndex >= 0 && initialPairIndex < pairs.length ? initialPairIndex : 0
   );
   const [amount, setAmount] = useState(String(initialAmount ?? 1000));
-  const [useMpesaFee, setUseMpesaFee] = useState(true);
+  // Starts unchecked - with "Sem M-Pesa/e-Mola" also defaulting on, there's
+  // nothing to discount initially anyway. Left as a real, always-visible
+  // choice (just disabled, never hidden, while it has no effect) so
+  // turning that filter off and using a fee-charging merchant is still one
+  // click away, not a control that reappears out of nowhere.
+  const [useMpesaFee, setUseMpesaFee] = useState(false);
   const [budgetMode, setBudgetMode] = useState<BudgetMode>('no_restriction');
   // Keyed by the advertiser's nickname, not the ad's own advNo - the
   // nickname is the stable identity (same choice already made for
@@ -267,7 +272,7 @@ export function MultiAdSimulator({
 
   const clearSimulation = () => {
     setAmount(String(initialAmount ?? 1000));
-    setUseMpesaFee(true);
+    setUseMpesaFee(false);
     setExcludedNicknames(new Set());
     setBudgetMode('no_restriction');
     setBuyFavoritesOnly(false);
@@ -505,18 +510,19 @@ export function MultiAdSimulator({
         )}
       </p>
 
-      {mpesaApplicable &&
-        plan &&
-        (hasFeeChargingStep ? (
-          <label className="mt-3 flex items-center gap-2 text-xs text-muted">
-            <input type="checkbox" checked={useMpesaFee} onChange={(e) => setUseMpesaFee(e.target.checked)} className="accent-accent" />
-            Descontar taxa real de levantamento M-Pesa por comerciante (cada um cobra o seu próprio custo)
-          </label>
-        ) : (
-          <p className="mt-3 text-xs text-positive">
-            Sem taxa de levantamento a descontar - todos os comerciantes usados neste plano aceitam pagamento sem M-Pesa/e-Mola.
-          </p>
-        ))}
+      {mpesaApplicable && (
+        <label className={`mt-3 flex items-center gap-2 text-xs ${hasFeeChargingStep ? 'text-muted' : 'text-muted opacity-50'}`}>
+          <input
+            type="checkbox"
+            checked={useMpesaFee}
+            disabled={!hasFeeChargingStep}
+            onChange={(e) => setUseMpesaFee(e.target.checked)}
+            className="accent-accent"
+          />
+          Descontar taxa real de levantamento M-Pesa por comerciante (cada um cobra o seu próprio custo)
+          {!hasFeeChargingStep && ' - nenhum comerciante usado neste plano cobra esta taxa agora'}
+        </label>
+      )}
 
       <details className="group mt-3 rounded-lg border border-border">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted marker:hidden group-open:text-foreground">

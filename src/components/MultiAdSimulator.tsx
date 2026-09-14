@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { planRoundTrip } from '@/lib/orderBookSimulator';
-import { X, Search } from 'lucide-react';
+import { X, Search, Star, ChevronDown } from 'lucide-react';
 import type { P2PAd } from '@/lib/binancePublicP2P';
 import type { CapitalSettings } from '@/lib/capitalSettings';
 import { FillStepList } from '@/components/FillStepList';
@@ -13,6 +13,71 @@ export type PairBooks = { asset: string; fiat: string; buyAds: P2PAd[]; sellAds:
 
 function fmt(n: number, maxFrac = 2) {
   return n.toLocaleString('pt-PT', { maximumFractionDigits: maxFrac });
+}
+
+function AdPickerList({
+  ads,
+  fiat,
+  asset,
+  excludedAdvNos,
+  watchedSet,
+  onToggle,
+  onSelectAll,
+  onFavoritesOnly,
+}: {
+  ads: P2PAd[];
+  fiat: string;
+  asset: string;
+  excludedAdvNos: Set<string>;
+  watchedSet: Set<string>;
+  onToggle: (advNo: string) => void;
+  onSelectAll: () => void;
+  onFavoritesOnly: () => void;
+}) {
+  const hasFavorites = ads.some((a) => watchedSet.has(a.advertiserNickname));
+  return (
+    <div className="flex-1 rounded-lg border border-border">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-background px-3 py-2">
+        <span className="text-xs text-muted">{ads.length} anúncios reais</span>
+        <div className="flex gap-1.5">
+          <button type="button" onClick={onSelectAll} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted hover:text-foreground">
+            Todos
+          </button>
+          {hasFavorites && (
+            <button type="button" onClick={onFavoritesOnly} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted hover:text-foreground">
+              Só favoritos
+            </button>
+          )}
+        </div>
+      </div>
+      {ads.length === 0 ? (
+        <p className="p-3 text-xs text-muted">Sem anúncios reais neste momento.</p>
+      ) : (
+        <div className="flex max-h-64 flex-col divide-y divide-border overflow-y-auto">
+          {ads.map((ad) => {
+            const checked = !excludedAdvNos.has(ad.advNo);
+            const watched = watchedSet.has(ad.advertiserNickname);
+            return (
+              <label key={ad.advNo} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs hover:bg-surface-raised">
+                <input type="checkbox" checked={checked} onChange={() => onToggle(ad.advNo)} className="accent-accent" />
+                {watched && <Star size={11} className="shrink-0 text-accent" fill="currentColor" />}
+                <span className="flex-1 truncate">
+                  {ad.advertiserNickname}
+                  {ad.advertiserIsMerchant && <span className="ml-1.5 rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
+                </span>
+                <span className="shrink-0 font-mono font-semibold text-accent">
+                  {fmt(ad.price, 4)} {fiat}
+                </span>
+                <span className="hidden shrink-0 font-mono text-muted sm:inline">
+                  {fmt(ad.availableQuantity, 2)} {asset}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -29,30 +94,71 @@ export function MultiAdSimulator({
   capitalSettings,
   initialAmount,
   initialPairIndex,
+  watchedAdvertisers = [],
 }: {
   pairs: PairBooks[];
   capitalSettings: CapitalSettings;
   initialAmount?: number;
   initialPairIndex?: number;
+  watchedAdvertisers?: string[];
 }) {
   const [pairIdx, setPairIdx] = useState(
     initialPairIndex != null && initialPairIndex >= 0 && initialPairIndex < pairs.length ? initialPairIndex : 0
   );
   const [amount, setAmount] = useState(String(initialAmount ?? 1000));
   const [useMpesaFee, setUseMpesaFee] = useState(true);
+  // Keyed by the ad's own advNo (unique and stable for this page load) -
+  // "excluded" rather than "included" means every real ad participates by
+  // default (today's behavior) with no initialization, and switching pair
+  // tabs "just works": a different pair's ads have entirely different
+  // advNos, so old exclusions simply don't match anything there.
+  const [excludedAdvNos, setExcludedAdvNos] = useState<Set<string>>(new Set());
+  const watchedSet = useMemo(() => new Set(watchedAdvertisers), [watchedAdvertisers]);
 
   const pair = pairs[pairIdx];
   const targetFiat = Number(amount);
   const mpesaApplicable = pair?.fiat === 'MZN';
 
+  const filteredBuyAds = useMemo(() => (pair ? pair.buyAds.filter((a) => !excludedAdvNos.has(a.advNo)) : []), [pair, excludedAdvNos]);
+  const filteredSellAds = useMemo(() => (pair ? pair.sellAds.filter((a) => !excludedAdvNos.has(a.advNo)) : []), [pair, excludedAdvNos]);
+
   const plan = useMemo(() => {
     if (!pair || !(targetFiat > 0)) return null;
-    return planRoundTrip(pair.buyAds, pair.sellAds, targetFiat, capitalSettings, mpesaApplicable && useMpesaFee);
-  }, [pair, targetFiat, capitalSettings, mpesaApplicable, useMpesaFee]);
+    return planRoundTrip(filteredBuyAds, filteredSellAds, targetFiat, capitalSettings, mpesaApplicable && useMpesaFee);
+  }, [pair, targetFiat, capitalSettings, mpesaApplicable, useMpesaFee, filteredBuyAds, filteredSellAds]);
 
   const clearSimulation = () => {
     setAmount(String(initialAmount ?? 1000));
     setUseMpesaFee(true);
+    setExcludedAdvNos(new Set());
+  };
+
+  const toggleAd = (advNo: string) => {
+    setExcludedAdvNos((prev) => {
+      const next = new Set(prev);
+      if (next.has(advNo)) next.delete(advNo);
+      else next.add(advNo);
+      return next;
+    });
+  };
+
+  const selectAll = (ads: P2PAd[]) => {
+    setExcludedAdvNos((prev) => {
+      const next = new Set(prev);
+      for (const a of ads) next.delete(a.advNo);
+      return next;
+    });
+  };
+
+  const favoritesOnly = (ads: P2PAd[]) => {
+    setExcludedAdvNos((prev) => {
+      const next = new Set(prev);
+      for (const a of ads) {
+        if (watchedSet.has(a.advertiserNickname)) next.delete(a.advNo);
+        else next.add(a.advNo);
+      }
+      return next;
+    });
   };
 
   if (pairs.length === 0) {
@@ -69,6 +175,10 @@ export function MultiAdSimulator({
   // vários comerciantes (buy.avgPrice/sell.avgPrice) com todos os custos
   // (configurados + M-Pesa) somados ao lado da compra, onde são cobrados.
   const effectiveBuyRate = plan && plan.buy.filledQuantity > 0 ? (plan.buy.filledFiat + plan.configuredCosts + plan.mpesaFee) / plan.buy.filledQuantity : null;
+
+  const buySelectedCount = pair.buyAds.length - pair.buyAds.filter((a) => excludedAdvNos.has(a.advNo)).length;
+  const sellSelectedCount = pair.sellAds.length - pair.sellAds.filter((a) => excludedAdvNos.has(a.advNo)).length;
+  const hasCustomSelection = buySelectedCount < pair.buyAds.length || sellSelectedCount < pair.sellAds.length;
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5">
@@ -135,6 +245,47 @@ export function MultiAdSimulator({
         </label>
       )}
 
+      <details className="group mt-3 rounded-lg border border-border">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted marker:hidden group-open:text-foreground">
+          <span className="flex items-center gap-1.5">
+            <ChevronDown size={13} className="transition group-open:rotate-180" /> Escolher comerciantes (opcional)
+          </span>
+          {hasCustomSelection && (
+            <span className="text-accent">
+              A usar {buySelectedCount} de {pair.buyAds.length} (compra) · {sellSelectedCount} de {pair.sellAds.length} (venda)
+            </span>
+          )}
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-border p-3 sm:flex-row">
+          <div className="flex-1">
+            <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Vou comprar de</div>
+            <AdPickerList
+              ads={pair.buyAds}
+              fiat={pair.fiat}
+              asset={pair.asset}
+              excludedAdvNos={excludedAdvNos}
+              watchedSet={watchedSet}
+              onToggle={toggleAd}
+              onSelectAll={() => selectAll(pair.buyAds)}
+              onFavoritesOnly={() => favoritesOnly(pair.buyAds)}
+            />
+          </div>
+          <div className="flex-1">
+            <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Vou vender para</div>
+            <AdPickerList
+              ads={pair.sellAds}
+              fiat={pair.fiat}
+              asset={pair.asset}
+              excludedAdvNos={excludedAdvNos}
+              watchedSet={watchedSet}
+              onToggle={toggleAd}
+              onSelectAll={() => selectAll(pair.sellAds)}
+              onFavoritesOnly={() => favoritesOnly(pair.sellAds)}
+            />
+          </div>
+        </div>
+      </details>
+
       {plan && (
         <>
           <div className="mt-4">
@@ -144,8 +295,8 @@ export function MultiAdSimulator({
             <FillStepList steps={plan.buy.steps} asset={pair.asset} fiat={pair.fiat} showMpesaFee={mpesaApplicable && useMpesaFee} />
             {buyShortfall > 0 && (
               <p className="mt-1.5 text-xs text-negative">
-                Só consegui cobrir {fmt(plan.buy.filledFiat)} de {fmt(targetFiat)} {pair.fiat} com os anúncios visíveis agora -
-                faltam {fmt(buyShortfall)} {pair.fiat}.
+                Só consegui cobrir {fmt(plan.buy.filledFiat)} de {fmt(targetFiat)} {pair.fiat} com os anúncios{' '}
+                {hasCustomSelection ? 'selecionados' : 'visíveis'} agora - faltam {fmt(buyShortfall)} {pair.fiat}.
               </p>
             )}
           </div>
@@ -157,8 +308,8 @@ export function MultiAdSimulator({
             <FillStepList steps={plan.sell.steps} asset={pair.asset} fiat={pair.fiat} />
             {plan.unsoldQuantity > 0 && (
               <p className="mt-1.5 text-xs text-negative">
-                {fmt(plan.unsoldQuantity, 4)} {pair.asset} comprados não têm comprador ao preço atual nos anúncios visíveis - ficam
-                por vender nesta simulação.
+                {fmt(plan.unsoldQuantity, 4)} {pair.asset} comprados não têm comprador ao preço atual nos anúncios{' '}
+                {hasCustomSelection ? 'selecionados' : 'visíveis'} agora - ficam por vender nesta simulação.
               </p>
             )}
           </div>

@@ -7,6 +7,7 @@ import { getMidRates } from '@/lib/exchangeRates';
 import { fromProfile, resolveReferenceAmount } from '@/lib/capitalSettings';
 import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
 import { fetchPairBooks } from '@/lib/multiAdOpportunity';
+import { getWatchedAdvertiserNicknames } from '@/lib/watchlist';
 import { QuickSimulator } from '@/components/QuickSimulator';
 import { CurrencyCycle } from '@/components/CurrencyCycle';
 import { ProfitCalculator } from '@/components/ProfitCalculator';
@@ -43,11 +44,12 @@ export default async function SimulationPage({
   // ad's price" (Anúncios, Phase 4) - they never collide.
   const fromAd = !sp.wallet && sp.price != null && (sp.side === 'buy' || sp.side === 'sell');
 
-  const [marketSeries, lots, positions, sales] = await Promise.all([
+  const [marketSeries, lots, positions, sales, watchedAdvertisers] = await Promise.all([
     getMarketSeries(),
     getOpenLots(user.id),
     getPositionSummaries(user.id),
     getRecentSales(user.id, 20),
+    getWatchedAdvertiserNicknames(user.id),
   ]);
 
   const marketPairs = marketSeries.map((s) => ({ asset: s.asset, fiat: s.fiat, buyPrice: s.lastBuy, sellPrice: s.lastSell }));
@@ -160,6 +162,7 @@ export default async function SimulationPage({
         capitalSettings={capitalSettings}
         initialAmount={multiAdAmount ?? referenceAmount}
         initialPairIndex={multiAdPairIndex >= 0 ? multiAdPairIndex : undefined}
+        watchedAdvertisers={watchedAdvertisers}
       />
 
       <QuickSimulator pairs={marketPairs} initialAmount={referenceAmount} />

@@ -12,7 +12,9 @@ import { QuickSimulator } from '@/components/QuickSimulator';
 import { CurrencyCycle } from '@/components/CurrencyCycle';
 import { ProfitCalculator } from '@/components/ProfitCalculator';
 import { WalletSaleSimulator, type SellableBalance, type MarketPairWithAge } from '@/components/WalletSaleSimulator';
-import { MultiAdSimulator, type PairBooks } from '@/components/MultiAdSimulator';
+import { MultiAdSimulator } from '@/components/MultiAdSimulator';
+import type { PairBooks } from '@/lib/multiAdOpportunity';
+import { RefreshPageButton } from '@/components/RefreshPageButton';
 import { PositionsTable, type LotRow } from '@/components/PositionsTable';
 import { AddLotForm, RecordSaleForm } from '@/components/SimulationForms';
 import { StatCard } from '@/components/StatCard';
@@ -121,12 +123,15 @@ export default async function SimulationPage({
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">Simulação</h1>
-        <p className="mt-1 text-sm text-muted">
-          Regista as tuas compras, descobre o preço ideal de venda para o lucro que queres, e acompanha o lucro (real e por
-          realizar) da tua posição a preços de mercado reais.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold">Simulação</h1>
+          <p className="mt-1 text-sm text-muted">
+            Regista as tuas compras, descobre o preço ideal de venda para o lucro que queres, e acompanha o lucro (real e por
+            realizar) da tua posição a preços de mercado reais.
+          </p>
+        </div>
+        <RefreshPageButton />
       </div>
 
       {walletFetchError && (

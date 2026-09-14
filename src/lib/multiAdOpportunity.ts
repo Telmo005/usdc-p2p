@@ -3,7 +3,20 @@ import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
 import { findBestAmount, type OptimizationResult } from '@/lib/orderBookSimulator';
 import type { CapitalSettings } from '@/lib/capitalSettings';
 
-export type PairBooks = { asset: string; fiat: string; buyAds: P2PAd[]; sellAds: P2PAd[]; fetchedAt: number };
+export type PairBooks = {
+  asset: string;
+  fiat: string;
+  buyAds: P2PAd[];
+  sellAds: P2PAd[];
+  fetchedAt: number;
+  /** Null on a normal fetch. On a real Binance/network failure this carries
+   *  the real error message instead of silently coming back as "zero ads" -
+   *  an initial page load can reasonably treat empty as "no ads posted,"
+   *  but a manual refresh (Phase 17) must never let a transient failure look
+   *  like the market went empty, so callers that replace existing data must
+   *  check this first. */
+  error: string | null;
+};
 
 /** Real individual ads (not the aggregate avg_top_price) for both legs of
  *  one pair - shared by the manual multi-ad simulator (Simulação) and the
@@ -13,9 +26,9 @@ export async function fetchPairBooks(asset: string, fiat: string): Promise<PairB
   const fetchedAt = Date.now();
   try {
     const [buySnap, sellSnap] = await Promise.all([fetchP2PSnapshot(asset, fiat, 'buy', 20), fetchP2PSnapshot(asset, fiat, 'sell', 20)]);
-    return { asset, fiat, buyAds: buySnap?.ads ?? [], sellAds: sellSnap?.ads ?? [], fetchedAt };
-  } catch {
-    return { asset, fiat, buyAds: [], sellAds: [], fetchedAt };
+    return { asset, fiat, buyAds: buySnap?.ads ?? [], sellAds: sellSnap?.ads ?? [], fetchedAt, error: null };
+  } catch (err) {
+    return { asset, fiat, buyAds: [], sellAds: [], fetchedAt, error: err instanceof Error ? err.message : 'Falha ao ler o mercado.' };
   }
 }
 

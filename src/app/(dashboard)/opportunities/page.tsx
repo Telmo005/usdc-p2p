@@ -10,6 +10,7 @@ import { fromProfile } from '@/lib/capitalSettings';
 import { OpportunityCard } from '@/components/OpportunityCard';
 import { FillStepList } from '@/components/FillStepList';
 import { DataTag } from '@/components/DataTag';
+import { RefreshPageButton } from '@/components/RefreshPageButton';
 import { SectionCard } from '@/components/ui/SectionCard';
 
 function fmt(n: number, maxFrac = 2) {
@@ -41,17 +42,20 @@ export default async function OpportunitiesPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-          <Target size={18} />
-        </span>
-        <div>
-          <h1 className="text-xl font-bold">Opportunity Center</h1>
-          <p className="mt-1 text-sm text-muted">
-            Situações reais detetadas nos dados que este sistema já acompanha - nunca uma diferença de preço apresentada como
-            lucro garantido. Cada oportunidade explica exatamente porque foi classificada.
-          </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <Target size={18} />
+          </span>
+          <div>
+            <h1 className="text-xl font-bold">Opportunity Center</h1>
+            <p className="mt-1 text-sm text-muted">
+              Situações reais detetadas nos dados que este sistema já acompanha - nunca uma diferença de preço apresentada como
+              lucro garantido. Cada oportunidade explica exatamente porque foi classificada.
+            </p>
+          </div>
         </div>
+        <RefreshPageButton />
       </div>
 
       <SectionCard

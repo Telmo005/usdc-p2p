@@ -1,16 +1,19 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { planRoundTrip } from '@/lib/orderBookSimulator';
 import { checkAdCompatibility, summarizeCompatibility, type BudgetMode } from '@/lib/budgetCompatibility';
-import { X, Search, Star, ChevronDown } from 'lucide-react';
+import { refreshPairBooksAction } from '@/app/actions/marketData';
+import { formatAge, getFreshness } from '@/lib/dataQuality';
+import { X, Search, Star, ChevronDown, RefreshCw } from 'lucide-react';
 import type { P2PAd } from '@/lib/binancePublicP2P';
+import type { PairBooks } from '@/lib/multiAdOpportunity';
 import type { CapitalSettings } from '@/lib/capitalSettings';
 import { FillStepList } from '@/components/FillStepList';
 import { DataTag } from '@/components/DataTag';
 
-export type PairBooks = { asset: string; fiat: string; buyAds: P2PAd[]; sellAds: P2PAd[]; fetchedAt: number };
+export type { PairBooks };
 
 function fmt(n: number, maxFrac = 2) {
   return n.toLocaleString('pt-PT', { maximumFractionDigits: maxFrac });
@@ -157,7 +160,19 @@ export function MultiAdSimulator({
   const [excludedNicknames, setExcludedNicknames] = useState<Set<string>>(new Set());
   const watchedSet = useMemo(() => new Set(watchedAdvertisers), [watchedAdvertisers]);
 
-  const pair = pairs[pairIdx];
+  // Manual/auto refresh (Phase 17) - a purely additive "last known good"
+  // override per pair, never a replacement of the `pairs` prop itself.
+  // Deriving `pair` this way (never an effect) means a real page
+  // navigation's fresh props are never shadowed by a stale override: the
+  // one with the newer fetchedAt simply wins on every render.
+  const [overrides, setOverrides] = useState<Record<string, PairBooks>>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+
+  const basePair = pairs[pairIdx];
+  const override = basePair ? overrides[`${basePair.asset}-${basePair.fiat}`] : undefined;
+  const pair = override && override.fetchedAt > (basePair?.fetchedAt ?? 0) ? override : basePair;
   const targetFiat = Number(amount);
   const mpesaApplicable = pair?.fiat === 'MZN';
 
@@ -184,6 +199,36 @@ export function MultiAdSimulator({
     setExcludedNicknames(new Set());
     setBudgetMode('no_restriction');
   };
+
+  // Guards against overlapping refreshes with a ref (not state) so it never
+  // needs to sit in a dependency array. A failed refresh sets refreshError
+  // and leaves `overrides` untouched - the old ads stay on screen exactly
+  // as they were, never silently replaced by an empty result.
+  const refreshInFlight = useRef(false);
+  const handleRefresh = useCallback(async () => {
+    if (!pair || refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      const fresh = await refreshPairBooksAction(pair.asset, pair.fiat);
+      if (fresh.error) setRefreshError(fresh.error);
+      else setOverrides((prev) => ({ ...prev, [`${fresh.asset}-${fresh.fiat}`]: fresh }));
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : 'Falha ao atualizar os anúncios.');
+    } finally {
+      refreshInFlight.current = false;
+      setRefreshing(false);
+    }
+  }, [pair]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') handleRefresh();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, handleRefresh]);
 
   const toggleAd = (nickname: string) => {
     setExcludedNicknames((prev) => {
@@ -329,7 +374,32 @@ export function MultiAdSimulator({
         )}
 
         <DataTag source="binance_public" fetchedAt={pair.fetchedAt} />
+
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-muted hover:border-accent hover:text-accent disabled:opacity-60"
+        >
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? 'A atualizar...' : 'Atualizar anúncios'}
+        </button>
+
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-accent" />
+          Atualizar automaticamente a cada 60s
+        </label>
+
+        <span className={`text-xs ${getFreshness(pair.fetchedAt, { delayedAfterMs: 30_000, staleAfterMs: 180_000 }) === 'stale' ? 'text-negative' : 'text-muted'}`}>
+          Atualizado {formatAge(pair.fetchedAt)}
+        </span>
       </div>
+
+      {refreshError && (
+        <p className="mt-2 text-xs text-negative">
+          Não consegui atualizar os anúncios: {refreshError} - os dados abaixo são os últimos que consegui carregar, não os mais
+          recentes.
+        </p>
+      )}
 
       <p className="mt-3 text-xs text-muted">
         Comerciantes analisados: {pair.buyAds.length} compra / {pair.sellAds.length} venda · Selecionados: {buySelectedCount} /{' '}

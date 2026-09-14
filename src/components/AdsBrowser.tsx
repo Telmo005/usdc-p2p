@@ -1,13 +1,16 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronRight, Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, Star } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
 import { DataTag } from '@/components/DataTag';
 import { toggleAdvertiserWatchAction } from '@/app/actions/watchlist';
+import { refreshPairBooksAction } from '@/app/actions/marketData';
+import { formatAge, getFreshness } from '@/lib/dataQuality';
 import type { P2PAd } from '@/lib/binancePublicP2P';
+import type { PairBooks } from '@/lib/multiAdOpportunity';
 
 export type AdBook = { asset: string; fiat: string; side: 'buy' | 'sell'; ads: P2PAd[] | null; error: string | null; fetchedAt: number };
 
@@ -162,14 +165,54 @@ export function AdsBrowser({
   const [expandedAdvNo, setExpandedAdvNo] = useState<string | null>(null);
   const watchedSet = useMemo(() => new Set(watchedAdvertisers), [watchedAdvertisers]);
 
-  const book = books.find((b) => `${b.asset}/${b.fiat}` === pair && b.side === side);
+  // Manual/auto refresh (Phase 17) - same "additive override, freshest
+  // wins" pattern as MultiAdSimulator: never replaces `books`, so a real
+  // page navigation's fresh props are never shadowed by a stale refresh.
+  const [overrides, setOverrides] = useState<Record<string, PairBooks>>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+
+  const baseBook = books.find((b) => `${b.asset}/${b.fiat}` === pair && b.side === side);
   const [asset, fiat] = pair.split('/');
+  const override = overrides[pair];
+  const book: AdBook | undefined =
+    override && override.fetchedAt > (baseBook?.fetchedAt ?? 0)
+      ? { asset, fiat, side, ads: side === 'buy' ? override.buyAds : override.sellAds, error: override.error, fetchedAt: override.fetchedAt }
+      : baseBook;
   // "sem taxa" only means something when I'm the one paying cash (side
   // 'buy' shows the ads I'd pay to) and only MZN has a real M-Pesa/e-Mola
   // withdrawal fee to avoid in the first place (lib/mpesaFees.ts).
   const showFeeFree = side === 'buy' && fiat === 'MZN';
 
   const toggle = (advNo: string) => setExpandedAdvNo((cur) => (cur === advNo ? null : advNo));
+
+  const refreshInFlight = useRef(false);
+  const handleRefresh = useCallback(async () => {
+    const [a, f] = pair.split('/');
+    if (!a || !f || refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      const fresh = await refreshPairBooksAction(a, f);
+      if (fresh.error) setRefreshError(fresh.error);
+      else setOverrides((prev) => ({ ...prev, [`${fresh.asset}/${fresh.fiat}`]: fresh }));
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : 'Falha ao atualizar os anúncios.');
+    } finally {
+      refreshInFlight.current = false;
+      setRefreshing(false);
+    }
+  }, [pair]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') handleRefresh();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, handleRefresh]);
 
   return (
     <div>
@@ -209,8 +252,34 @@ export function AdsBrowser({
             ? `Anúncios de quem está a vender ${asset} - é a estes preços que compras.`
             : `Anúncios de quem está a comprar ${asset} - é a estes preços que vendes.`}
         </p>
-        {book && !book.error && <DataTag source="binance_public" fetchedAt={book.fetchedAt} />}
+        <div className="flex flex-wrap items-center gap-3">
+          {book && !book.error && <DataTag source="binance_public" fetchedAt={book.fetchedAt} />}
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-muted hover:border-accent hover:text-accent disabled:opacity-60"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? 'A atualizar...' : 'Atualizar'}
+          </button>
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-accent" />
+            Automático (60s)
+          </label>
+          {book && (
+            <span className={`text-xs ${getFreshness(book.fetchedAt, { delayedAfterMs: 30_000, staleAfterMs: 180_000 }) === 'stale' ? 'text-negative' : 'text-muted'}`}>
+              Atualizado {formatAge(book.fetchedAt)}
+            </span>
+          )}
+        </div>
       </div>
+
+      {refreshError && (
+        <p className="mt-2 text-xs text-negative">
+          Não consegui atualizar os anúncios: {refreshError} - os dados abaixo são os últimos que consegui carregar, não os mais
+          recentes.
+        </p>
+      )}
 
       <div className="mt-4">
         {!book || book.error ? (

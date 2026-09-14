@@ -44,15 +44,20 @@ function AdPickerList({
   excludedNicknames: Set<string>;
   watchedSet: Set<string>;
   showFeeFreeAction: boolean;
-  favoritesOnly: boolean;
-  feeFreeOnly: boolean;
+  /** Undefined = this list has no quick filters at all (sell side - filters
+   *  only ever apply to the buy leg, per the user's own instruction: "os
+   *  filtros devem ser apenas para compra"). Sell stays plain Todos/Nenhum
+   *  + individual checkboxes. */
+  favoritesOnly?: boolean;
+  feeFreeOnly?: boolean;
   onToggle: (nickname: string) => void;
   onSelectAll: (ads: P2PAd[]) => void;
   onDeselectAll: (ads: P2PAd[]) => void;
-  onToggleFavoritesOnly: () => void;
-  onToggleFeeFreeOnly: () => void;
+  onToggleFavoritesOnly?: () => void;
+  onToggleFeeFreeOnly?: () => void;
 }) {
   const [search, setSearch] = useState('');
+  const hasFilters = favoritesOnly !== undefined;
   const hasFavorites = ads.some((a) => watchedSet.has(a.advertiserNickname));
   const hasFeeFree = ads.some((a) => a.hasNonMobileMoneyMethod);
   // The book is now the real full order book (fetchFullP2POrderBook), not
@@ -84,32 +89,40 @@ function AdPickerList({
             />
           </div>
         </div>
-        <div className="flex flex-wrap justify-end gap-1.5">
-          <button type="button" onClick={() => onSelectAll(visibleAds)} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted hover:text-foreground">
-            Todos
-          </button>
-          <button type="button" onClick={() => onDeselectAll(visibleAds)} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted hover:text-foreground">
-            Nenhum
-          </button>
-          {hasFavorites && (
-            <button
-              type="button"
-              onClick={onToggleFavoritesOnly}
-              aria-pressed={favoritesOnly}
-              className={`rounded-full border px-2 py-0.5 text-[11px] ${favoritesOnly ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-foreground'}`}
-            >
-              Só favoritos
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wide text-muted">Seleção</span>
+            <button type="button" onClick={() => onSelectAll(visibleAds)} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted hover:text-foreground">
+              Todos
             </button>
-          )}
-          {showFeeFreeAction && hasFeeFree && (
-            <button
-              type="button"
-              onClick={onToggleFeeFreeOnly}
-              aria-pressed={feeFreeOnly}
-              className={`rounded-full border px-2 py-0.5 text-[11px] ${feeFreeOnly ? 'border-positive bg-positive/10 text-positive' : 'border-positive/40 text-positive hover:bg-positive/10'}`}
-            >
-              Sem M-Pesa/e-Mola
+            <button type="button" onClick={() => onDeselectAll(visibleAds)} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted hover:text-foreground">
+              Nenhum
             </button>
+          </div>
+          {hasFilters && (hasFavorites || (showFeeFreeAction && hasFeeFree)) && (
+            <div className="flex items-center gap-1.5 border-l border-border pl-3">
+              <span className="text-[10px] uppercase tracking-wide text-muted">Filtros</span>
+              {hasFavorites && (
+                <button
+                  type="button"
+                  onClick={onToggleFavoritesOnly}
+                  aria-pressed={favoritesOnly}
+                  className={`rounded-full border px-2 py-0.5 text-[11px] ${favoritesOnly ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-foreground'}`}
+                >
+                  Só favoritos
+                </button>
+              )}
+              {showFeeFreeAction && hasFeeFree && (
+                <button
+                  type="button"
+                  onClick={onToggleFeeFreeOnly}
+                  aria-pressed={feeFreeOnly}
+                  className={`rounded-full border px-2 py-0.5 text-[11px] ${feeFreeOnly ? 'border-positive bg-positive/10 text-positive' : 'border-positive/40 text-positive hover:bg-positive/10'}`}
+                >
+                  Sem M-Pesa/e-Mola
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -205,11 +218,12 @@ export function MultiAdSimulator({
   // Persistent, combinable quick filters (not one-shot bulk actions) - "só
   // favoritos" and "sem M-Pesa/e-Mola" can both be on at once, hide
   // non-matching ads from the picker, AND narrow what the plan actually
-  // uses (see buyAdsForPlan/sellAdsForPlan below). Sell has no fee-free
-  // filter - the fee only ever applies to the buy leg.
+  // uses (see buyAdsForPlan below). Buy only - "os filtros devem ser
+  // apenas para compra": sell stays plain Todos/Nenhum + manual checkboxes.
+  // "Sem M-Pesa/e-Mola" defaults ON - the whole point of that fee is that
+  // it's avoidable, so the default view already shows the full-profit path.
   const [buyFavoritesOnly, setBuyFavoritesOnly] = useState(false);
-  const [buyFeeFreeOnly, setBuyFeeFreeOnly] = useState(false);
-  const [sellFavoritesOnly, setSellFavoritesOnly] = useState(false);
+  const [buyFeeFreeOnly, setBuyFeeFreeOnly] = useState(true);
   const watchedSet = useMemo(() => new Set(watchedAdvertisers), [watchedAdvertisers]);
 
   // Manual/auto refresh (Phase 17) - a purely additive "last known good"
@@ -232,16 +246,19 @@ export function MultiAdSimulator({
     if (!pair) return [];
     let list = pair.buyAds.filter((a) => !excludedNicknames.has(a.advertiserNickname));
     if (buyFavoritesOnly) list = list.filter((a) => watchedSet.has(a.advertiserNickname));
-    if (buyFeeFreeOnly) list = list.filter((a) => a.hasNonMobileMoneyMethod);
+    // Only meaningful for MZN (mpesaApplicable) - guards against silently
+    // filtering ZAR's buy list on a flag the UI never even shows there.
+    if (buyFeeFreeOnly && mpesaApplicable) list = list.filter((a) => a.hasNonMobileMoneyMethod);
     return budgetMode === 'respect_budget' ? list.filter((a) => checkAdCompatibility(a, targetFiat).compatible) : list;
-  }, [pair, excludedNicknames, buyFavoritesOnly, buyFeeFreeOnly, watchedSet, budgetMode, targetFiat]);
+  }, [pair, excludedNicknames, buyFavoritesOnly, buyFeeFreeOnly, mpesaApplicable, watchedSet, budgetMode, targetFiat]);
 
+  // No quick filters on the sell leg ("os filtros devem ser apenas para
+  // compra") - every real ad participates unless manually unchecked.
   const sellAdsForPlan = useMemo(() => {
     if (!pair) return [];
-    let list = pair.sellAds.filter((a) => !excludedNicknames.has(a.advertiserNickname));
-    if (sellFavoritesOnly) list = list.filter((a) => watchedSet.has(a.advertiserNickname));
+    const list = pair.sellAds.filter((a) => !excludedNicknames.has(a.advertiserNickname));
     return budgetMode === 'respect_budget' ? list.filter((a) => checkAdCompatibility(a, targetFiat).compatible) : list;
-  }, [pair, excludedNicknames, sellFavoritesOnly, watchedSet, budgetMode, targetFiat]);
+  }, [pair, excludedNicknames, budgetMode, targetFiat]);
 
   const plan = useMemo(() => {
     if (!pair || !(targetFiat > 0)) return null;
@@ -254,8 +271,7 @@ export function MultiAdSimulator({
     setExcludedNicknames(new Set());
     setBudgetMode('no_restriction');
     setBuyFavoritesOnly(false);
-    setBuyFeeFreeOnly(false);
-    setSellFavoritesOnly(false);
+    setBuyFeeFreeOnly(true);
   };
 
   // Guards against overlapping refreshes with a ref (not state) so it never
@@ -341,16 +357,6 @@ export function MultiAdSimulator({
       const next = !prev;
       if (next && pair) {
         includeMatching(pair.buyAds, (a) => a.hasNonMobileMoneyMethod && (!buyFavoritesOnly || watchedSet.has(a.advertiserNickname)));
-      }
-      return next;
-    });
-  };
-
-  const toggleSellFavoritesOnly = () => {
-    setSellFavoritesOnly((prev) => {
-      const next = !prev;
-      if (next && pair) {
-        includeMatching(pair.sellAds, (a) => watchedSet.has(a.advertiserNickname));
       }
       return next;
     });
@@ -542,13 +548,9 @@ export function MultiAdSimulator({
               excludedNicknames={excludedNicknames}
               watchedSet={watchedSet}
               showFeeFreeAction={false}
-              favoritesOnly={sellFavoritesOnly}
-              feeFreeOnly={false}
               onToggle={toggleAd}
               onSelectAll={selectAll}
               onDeselectAll={deselectAll}
-              onToggleFavoritesOnly={toggleSellFavoritesOnly}
-              onToggleFeeFreeOnly={() => {}}
             />
           </div>
         </div>

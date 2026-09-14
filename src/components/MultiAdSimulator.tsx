@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { planRoundTrip, findBestAmount, type FillStep, type OptimizationResult } from '@/lib/orderBookSimulator';
-import { Search } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import type { P2PAd } from '@/lib/binancePublicP2P';
 import type { CapitalSettings } from '@/lib/capitalSettings';
 import { getMPesaWithdrawalFee } from '@/lib/mpesaFees';
@@ -79,6 +79,12 @@ export function MultiAdSimulator({
     setSearchResult(result);
   };
 
+  const clearSimulation = () => {
+    setAmount(String(initialAmount ?? 1000));
+    setUseMpesaFee(true);
+    setSearchResult(null);
+  };
+
   if (pairs.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-surface p-5 text-sm text-muted">
@@ -120,6 +126,14 @@ export function MultiAdSimulator({
           className="flex items-center gap-1.5 rounded-lg border border-accent/50 px-3 py-2 text-xs text-accent hover:bg-accent/10"
         >
           <Search size={13} /> Encontrar valor ideal
+        </button>
+
+        <button
+          type="button"
+          onClick={clearSimulation}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-muted hover:border-negative hover:text-negative"
+        >
+          <X size={13} /> Limpar simulação
         </button>
 
         {pairs.length > 1 && (

@@ -173,19 +173,23 @@ export type OptimizationResult = {
 };
 
 const DEFAULT_MIN_AMOUNT = 600; // Binance's own typical per-order minimum for these ads
-const DEFAULT_STEP = 100;
+const DEFAULT_MAX_AMOUNT = 30_000; // realistic ceiling for a single "ideal amount" search
+// Every whole MZN is tested, not sampled - a coarser step can silently step
+// over the exact amount that avoids an M-Pesa bracket jump or maximizes use
+// of the single best-priced ad, which is the entire point of this search.
+const DEFAULT_STEP = 1;
 
 /**
  * Net profit isn't a smooth function of the amount invested: the M-Pesa
  * tariff is tiered (a real bracket jump can make a slightly smaller amount
  * net more than a slightly larger one - lib/mpesaFees.ts), and as the
  * amount grows it starts eating into worse-priced ads on both legs. There's
- * no formula to solve for the best amount directly, so this tries real
- * candidate amounts (every `step` MZN, from `minAmount` up to the real
- * total capacity of the buy-side book - searching further is pointless,
- * the shortfall would only grow) and returns whichever one actually
- * produced the highest real net result via planRoundTrip. A real search
- * over real numbers, not a guessed optimum.
+ * no formula to solve for the best amount directly, so this tries every
+ * real candidate amount (every whole MZN, from `minAmount` up to whichever
+ * is smaller of `maxAmount` and the book's own real capacity - searching
+ * beyond either is pointless) and returns whichever one actually produced
+ * the highest real net result via planRoundTrip. A real search over real
+ * numbers, not a guessed optimum, and never skips a value.
  */
 export function findBestAmount(
   buyAds: P2PAd[],
@@ -197,7 +201,8 @@ export function findBestAmount(
   const minAmount = opts?.minAmount ?? DEFAULT_MIN_AMOUNT;
   const step = opts?.step ?? DEFAULT_STEP;
   const totalCapacity = buyAds.reduce((sum, ad) => sum + Math.min(ad.maxSingleTransAmount, ad.availableQuantity * ad.price), 0);
-  const maxAmount = Math.max(minAmount, opts?.maxAmount ?? Math.floor(totalCapacity));
+  const ceiling = opts?.maxAmount ?? DEFAULT_MAX_AMOUNT;
+  const maxAmount = Math.max(minAmount, Math.min(ceiling, totalCapacity > 0 ? Math.floor(totalCapacity) : ceiling));
 
   let bestPlan = planRoundTrip(buyAds, sellAds, minAmount, costs, includeMpesaFee);
   let bestAmount = minAmount;

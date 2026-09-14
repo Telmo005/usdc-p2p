@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { UserCircle, Link2, BellRing, Coins } from 'lucide-react';
+import { UserCircle, Link2, BellRing, Coins, Settings } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { fromProfile } from '@/lib/capitalSettings';
@@ -17,9 +17,14 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">Configurações</h1>
-        <p className="mt-1 text-sm text-muted">Conta, ligação com a Binance e capital.</p>
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <Settings size={18} />
+        </span>
+        <div>
+          <h1 className="text-xl font-bold">Configurações</h1>
+          <p className="mt-1 text-sm text-muted">Conta, ligação com a Binance e capital.</p>
+        </div>
       </div>
 
       <SectionCard title="Conta" icon={UserCircle}>

@@ -1,4 +1,4 @@
-import { BellRing, Wallet, AlertOctagon } from 'lucide-react';
+import { Bell, BellRing, Wallet, AlertOctagon } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { getMarketSeries, getUserNotifications } from '@/lib/db';
 import { getUserAlerts } from '@/lib/alerts';
@@ -32,12 +32,17 @@ export default async function AlertsPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">Centro de Alertas</h1>
-        <p className="mt-1 text-sm text-muted">
-          Condições de mercado e de conta que tu configuras, mais os avisos automáticos de sistema e ordens que este sistema já
-          deteta sozinho.
-        </p>
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <Bell size={18} />
+        </span>
+        <div>
+          <h1 className="text-xl font-bold">Centro de Alertas</h1>
+          <p className="mt-1 text-sm text-muted">
+            Condições de mercado e de conta que tu configuras, mais os avisos automáticos de sistema e ordens que este sistema já
+            deteta sozinho.
+          </p>
+        </div>
       </div>
 
       <SectionCard

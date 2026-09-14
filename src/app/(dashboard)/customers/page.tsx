@@ -37,9 +37,14 @@ export default async function CustomersPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">Contrapartes</h1>
-        <p className="mt-1 text-sm text-muted">As contrapartes com quem já negociaste, a partir do teu histórico sincronizado da Binance.</p>
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <Users size={18} />
+        </span>
+        <div>
+          <h1 className="text-xl font-bold">Contrapartes</h1>
+          <p className="mt-1 text-sm text-muted">As contrapartes com quem já negociaste, a partir do teu histórico sincronizado da Binance.</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -67,9 +67,14 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold">Análise & Relatórios</h1>
-          <p className="mt-1 text-sm text-muted">Desempenho real das tuas ordens concluídas, sincronizadas da Binance.</p>
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <BarChart3 size={18} />
+          </span>
+          <div>
+            <h1 className="text-xl font-bold">Análise & Relatórios</h1>
+            <p className="mt-1 text-sm text-muted">Desempenho real das tuas ordens concluídas, sincronizadas da Binance.</p>
+          </div>
         </div>
         <a
           href={`/api/export/orders${selected.days ? `?days=${selected.days}` : ''}`}

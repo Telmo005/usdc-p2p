@@ -10,7 +10,7 @@ import { fromProfile } from '@/lib/capitalSettings';
 import { OpportunityCard } from '@/components/OpportunityCard';
 import { FillStepList } from '@/components/FillStepList';
 import { DataTag } from '@/components/DataTag';
-import { RefreshPageButton } from '@/components/RefreshPageButton';
+import { RefreshButton } from '@/components/RefreshButton';
 import { SectionCard } from '@/components/ui/SectionCard';
 
 function fmt(n: number, maxFrac = 2) {
@@ -55,7 +55,7 @@ export default async function OpportunitiesPage() {
             </p>
           </div>
         </div>
-        <RefreshPageButton />
+        <RefreshButton label="Atualizar página" />
       </div>
 
       <SectionCard

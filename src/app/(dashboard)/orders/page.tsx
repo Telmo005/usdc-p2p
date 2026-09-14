@@ -40,9 +40,14 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">Ordens</h1>
-        <p className="mt-1 text-sm text-muted">Todo o teu histórico de operações P2P, sincronizado da Binance.</p>
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <ListChecks size={18} />
+        </span>
+        <div>
+          <h1 className="text-xl font-bold">Ordens</h1>
+          <p className="mt-1 text-sm text-muted">Todo o teu histórico de operações P2P, sincronizado da Binance.</p>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

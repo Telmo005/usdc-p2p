@@ -1,3 +1,4 @@
+import { Calculator } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { getMarketSeries } from '@/lib/db';
 import { getOpenLots, getPositionSummaries, getRecentSales } from '@/lib/simulation';
@@ -10,7 +11,7 @@ import type { PairBooks } from '@/lib/multiAdOpportunity';
 import { getWatchedAdvertiserNicknames } from '@/lib/watchlist';
 import { type SellableBalance, type MarketPairWithAge } from '@/components/WalletSaleSimulator';
 import { SimulationTabs } from '@/components/SimulationTabs';
-import { RefreshPageButton } from '@/components/RefreshPageButton';
+import { RefreshButton } from '@/components/RefreshButton';
 import type { LotRow } from '@/components/PositionsTable';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
 
@@ -128,14 +129,19 @@ export default async function SimulationPage({
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold">Simulação</h1>
-          <p className="mt-1 text-sm text-muted">
-            Regista as tuas compras, descobre o preço ideal de venda para o lucro que queres, e acompanha o lucro (real e por
-            realizar) da tua posição a preços de mercado reais.
-          </p>
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <Calculator size={18} />
+          </span>
+          <div>
+            <h1 className="text-xl font-bold">Simulação</h1>
+            <p className="mt-1 text-sm text-muted">
+              Regista as tuas compras, descobre o preço ideal de venda para o lucro que queres, e acompanha o lucro (real e por
+              realizar) da tua posição a preços de mercado reais.
+            </p>
+          </div>
         </div>
-        <RefreshPageButton />
+        <RefreshButton label="Atualizar página" />
       </div>
 
       {walletFetchError && (

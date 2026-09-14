@@ -5,17 +5,23 @@ import { query } from '@/lib/db';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Pagination } from '@/components/ui/Pagination';
 import { ORDER_STATUS_CONFIG, ORDER_STATUSES } from '@/lib/orderStatus';
 
 const STATUS_LABEL: Record<string, string> = { all: 'Todas' };
 for (const [key, cfg] of Object.entries(ORDER_STATUS_CONFIG)) STATUS_LABEL[key] = cfg.label;
 const STATUSES = ORDER_STATUSES;
+const PAGE_SIZE = 50;
 
-export default async function OrdersPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
+export default async function OrdersPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
   const { user } = await requireUser();
-  const { status } = await searchParams;
+  const { status, page: pageParam } = await searchParams;
   const filter = STATUSES.includes((status ?? 'all') as (typeof STATUSES)[number]) ? (status ?? 'all') : 'all';
+  const requestedPage = Math.max(1, Number(pageParam) || 1);
 
+  // count(*) over() piggybacks the total onto the same query - one round
+  // trip instead of a separate count query, real pagination instead of the
+  // old hard `limit 200` (silently truncated anything beyond that).
   const rows = await query<{
     id: string;
     platform: string;
@@ -29,14 +35,24 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     payment_method: string | null;
     status: string;
     created_at: string;
+    total_count: string;
   }>(
     filter === 'all'
-      ? `select id, platform, external_order_id, side, asset, fiat, quantity, price, total_value, payment_method, status, created_at
-         from p2p_manager.orders where user_id = $1 order by created_at desc limit 200`
-      : `select id, platform, external_order_id, side, asset, fiat, quantity, price, total_value, payment_method, status, created_at
-         from p2p_manager.orders where user_id = $1 and status = $2 order by created_at desc limit 200`,
-    filter === 'all' ? [user.id] : [user.id, filter]
+      ? `select id, platform, external_order_id, side, asset, fiat, quantity, price, total_value, payment_method, status, created_at,
+                count(*) over() as total_count
+         from p2p_manager.orders where user_id = $1 order by created_at desc limit $2 offset $3`
+      : `select id, platform, external_order_id, side, asset, fiat, quantity, price, total_value, payment_method, status, created_at,
+                count(*) over() as total_count
+         from p2p_manager.orders where user_id = $1 and status = $2 order by created_at desc limit $3 offset $4`,
+    filter === 'all'
+      ? [user.id, PAGE_SIZE, (requestedPage - 1) * PAGE_SIZE]
+      : [user.id, filter, PAGE_SIZE, (requestedPage - 1) * PAGE_SIZE]
   );
+
+  const totalCount = rows.length > 0 ? Number(rows[0].total_count) : 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const page = Math.min(requestedPage, totalPages);
+  const buildHref = (p: number) => (filter === 'all' ? `/orders?page=${p}` : `/orders?status=${filter}&page=${p}`);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -67,7 +83,11 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
       <SectionCard
         title={filter === 'all' ? 'Todas as ordens' : STATUS_LABEL[filter]}
         icon={ListChecks}
-        subtitle={rows.length > 0 ? `${rows.length} ordem${rows.length === 1 ? '' : 's'}${rows.length === 200 ? ' (limite de 200 mostradas)' : ''}` : undefined}
+        subtitle={
+          totalCount > 0
+            ? `${totalCount} ordem${totalCount === 1 ? '' : 's'} no total - página ${page} de ${totalPages}`
+            : undefined
+        }
       >
         {rows.length === 0 ? (
           <EmptyState
@@ -174,6 +194,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                 </Link>
               ))}
             </div>
+
+            <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
           </>
         )}
       </SectionCard>

@@ -37,6 +37,18 @@ export async function getWatchedAdvertiserNicknames(userId: string): Promise<str
   return rows.map((r) => r.advertiser_nickname);
 }
 
+/** Every advertiser nickname ANY user has favorited - not scoped to one
+ *  user_id, unlike every other function in this file. Deliberate exception:
+ *  this feeds advertiser_price_history (lib/advertiserHistory.ts), a
+ *  shared/public table like market_snapshots, not a per-user read - "whose
+ *  favorites" doesn't apply the way it does everywhere else here. */
+export async function getAllWatchedAdvertiserNicknames(): Promise<string[]> {
+  const rows = await query<{ advertiser_nickname: string }>(
+    `select distinct advertiser_nickname from p2p_manager.watchlist_items where kind = 'advertiser'`
+  );
+  return rows.map((r) => r.advertiser_nickname);
+}
+
 export async function addCounterpartyToWatchlist(userId: string, counterpartyId: string): Promise<void> {
   await query(
     `insert into p2p_manager.watchlist_items (user_id, kind, counterparty_id) values ($1, 'counterparty', $2)

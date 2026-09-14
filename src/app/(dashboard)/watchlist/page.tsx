@@ -4,9 +4,11 @@ import { requireUser } from '@/lib/auth';
 import { getWatchlist } from '@/lib/watchlist';
 import { getCustomerSummaries } from '@/lib/customers';
 import { fetchPairBooks } from '@/lib/multiAdOpportunity';
+import { getAdvertiserHistory } from '@/lib/advertiserHistory';
 import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
 import { toggleCounterpartyWatchAction, toggleAdvertiserWatchAction } from '@/app/actions/watchlist';
 import { DataTag } from '@/components/DataTag';
+import { AdvertiserHistoryChart } from '@/components/AdvertiserHistoryChart';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -35,6 +37,11 @@ export default async function WatchlistPage() {
   const watchedCustomers = counterpartyItems
     .map((i) => customers.find((c) => c.id === i.counterparty_id))
     .filter((c): c is NonNullable<typeof c> => c != null);
+
+  const historyEntries = await Promise.all(
+    advertiserItems.map(async (item) => [item.advertiser_nickname!, await getAdvertiserHistory(item.advertiser_nickname!)] as const)
+  );
+  const historyByNickname = new Map(historyEntries);
 
   // "Ainda visível agora?" - re-checks the live book instead of trusting a
   // stored snapshot, since nicknames aren't a real id and an ad's presence
@@ -118,6 +125,7 @@ export default async function WatchlistPage() {
                 {advertiserItems.map((item) => {
                   const nickname = item.advertiser_nickname!;
                   const sightings = findSightings(nickname);
+                  const history = historyByNickname.get(nickname) ?? [];
                   return (
                     <div key={item.id} className="rounded-lg border border-border p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -146,6 +154,13 @@ export default async function WatchlistPage() {
                                 <DataTag source="binance_public" fetchedAt={s.fetchedAt} />
                               </span>
                             </div>
+                          ))}
+                        </div>
+                      )}
+                      {history.length > 0 && (
+                        <div className="mt-2 flex flex-col gap-1.5">
+                          {history.map((s) => (
+                            <AdvertiserHistoryChart key={`${s.asset}-${s.fiat}-${s.side}`} series={s} />
                           ))}
                         </div>
                       )}

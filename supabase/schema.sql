@@ -300,6 +300,27 @@ create index if not exists market_snapshots_lookup_idx
   on p2p_manager.market_snapshots (platform, asset, fiat, side, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- advertiser_price_history: real per-ad prices for advertisers on SOMEONE's
+-- Favoritos list only (not every ad ever seen - unbounded growth was never
+-- the goal). Shared/public reference data like market_snapshots above (no
+-- user_id - a price a merchant posted isn't scoped to who favorited them),
+-- written by runMarketSync's existing fetch (no extra Binance calls) and by
+-- the manual/auto refresh action.
+-- ---------------------------------------------------------------------------
+create table if not exists p2p_manager.advertiser_price_history (
+  id uuid primary key default gen_random_uuid(),
+  advertiser_nickname text not null,
+  asset text not null,
+  fiat text not null,
+  side text not null check (side in ('buy', 'sell')),
+  price numeric not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists advertiser_price_history_lookup_idx
+  on p2p_manager.advertiser_price_history (advertiser_nickname, asset, fiat, side, created_at desc);
+
+-- ---------------------------------------------------------------------------
 -- account_snapshots: periodic real reads of the account's total wallet
 -- value (Spot+Funding+Earn, see lib/wallet.ts), taken by the same cron tick
 -- as market_snapshots. Shared/global like market_snapshots, not user-scoped
@@ -399,6 +420,7 @@ alter table p2p_manager.audit_log enable row level security;
 alter table p2p_manager.sync_state enable row level security;
 alter table p2p_manager.exchange_rates enable row level security;
 alter table p2p_manager.market_snapshots enable row level security;
+alter table p2p_manager.advertiser_price_history enable row level security;
 alter table p2p_manager.account_snapshots enable row level security;
 alter table p2p_manager.market_trend_state enable row level security;
 alter table p2p_manager.sim_lots enable row level security;
@@ -449,6 +471,9 @@ create policy exchange_rates_select on p2p_manager.exchange_rates for select usi
 
 drop policy if exists market_snapshots_select on p2p_manager.market_snapshots;
 create policy market_snapshots_select on p2p_manager.market_snapshots for select using (true);
+
+drop policy if exists advertiser_price_history_select on p2p_manager.advertiser_price_history;
+create policy advertiser_price_history_select on p2p_manager.advertiser_price_history for select using (true);
 
 drop policy if exists account_snapshots_select on p2p_manager.account_snapshots;
 create policy account_snapshots_select on p2p_manager.account_snapshots for select using (true);

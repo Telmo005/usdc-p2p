@@ -1,6 +1,8 @@
 import { query } from '@/lib/db';
 import { fetchP2PSnapshot } from '@/lib/binancePublicP2P';
 import { sendPush } from '@/lib/messagingClient';
+import { getAllWatchedAdvertiserNicknames } from '@/lib/watchlist';
+import { recordAdvertiserSightings } from '@/lib/advertiserHistory';
 
 /**
  * The pairs this app actively tracks. USDT/MZN is the user's primary market;
@@ -250,6 +252,10 @@ export async function runMarketSync(): Promise<MarketSyncResult> {
   const checked: MarketSyncResult['checked'] = [];
   const reversals: ReversalEvent[] = [];
   const errors: string[] = [];
+  // Favorited-advertiser price history (lib/advertiserHistory.ts) reuses
+  // this same fetch below - zero extra Binance calls. Fetched once per
+  // tick, not per pair/side.
+  const watchedNicknames = new Set(await getAllWatchedAdvertiserNicknames());
 
   for (const { asset, fiat } of TRACKED_PAIRS) {
     for (const side of SIDES) {
@@ -265,6 +271,10 @@ export async function runMarketSync(): Promise<MarketSyncResult> {
            values ($1, $2, $3, $4, $5, $6, $7)`,
           [platform, asset, fiat, side, snapshot.bestPrice, snapshot.avgTopPrice, snapshot.sampleSize]
         );
+
+        if (watchedNicknames.size > 0) {
+          await recordAdvertiserSightings(asset, fiat, side, snapshot.ads, watchedNicknames);
+        }
 
         // avgTopPrice (mean of the 5 best ads), not bestPrice (the single
         // top ad) - one thin/outlier ad at the very top of the book would

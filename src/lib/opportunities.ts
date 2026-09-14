@@ -3,6 +3,7 @@ import { getMarketAnalysis, type MarketAnalysisPair } from '@/lib/marketAnalysis
 import { cycleEfficiencyPct } from '@/lib/profitCalculator';
 import { getFreshness, type Freshness } from '@/lib/dataQuality';
 import { estimateCosts, isConfigured, resolveReferenceAmount, type CapitalSettings } from '@/lib/capitalSettings';
+import { getMPesaWithdrawalFee } from '@/lib/mpesaFees';
 
 /**
  * Opportunity detection - built entirely from data already persisted by the
@@ -129,7 +130,12 @@ export async function getOpportunities(settings: CapitalSettings, realTotalMzn: 
     const { amount: referenceAmount, source: referenceSource } = resolveReferenceAmount(settings, realTotalMzn);
     const grossResult = (referenceAmount * cyclePct) / 100;
     const costs = estimateCosts(settings, grossResult);
-    const netResult = grossResult - costs.total;
+    // A "ida" (MZN -> USDT) exige levantar `referenceAmount` em numerário
+    // para pagar o vendedor - a maioria dos anunciantes M-Pesa exige-o (ver
+    // lib/mpesaFees.ts) - um custo real, separado dos custos configurados.
+    const mpesaFee = getMPesaWithdrawalFee(referenceAmount);
+    const totalCosts = costs.total + mpesaFee;
+    const netResult = grossResult - totalCosts;
     const costsConfigured = isConfigured(settings);
 
     opportunities.push({
@@ -141,15 +147,16 @@ export async function getOpportunities(settings: CapitalSettings, realTotalMzn: 
       referenceAmount,
       fiat: 'MZN',
       grossResult,
-      costs: costs.total,
+      costs: totalCosts,
       netResult,
       score: buildScore(scorePriceMagnitude(cyclePct), scoreLiquidity(liquidity), scoreStability(volatility), costsScore, scoreDataQuality(freshness)),
       why: [
         `Eficiência do ciclo (ida MZN→USDT→ZAR, volta ZAR→USDT→MZN) = +${cyclePct.toFixed(2)}% agora, calculada com os preços reais de compra/venda dos dois mercados (mesma fórmula usada nos alertas de ciclo em Configurações).`,
         `Resultado bruto estimado para uma viagem de referência de ${referenceAmount.toFixed(2)} MZN (${referenceSource === 'real' ? 'o teu saldo real atual' : 'valor manual definido em Configurações'}): ${grossResult.toFixed(2)} MZN.`,
         costsConfigured
-          ? `Custos reais configurados em Configurações: ${costs.pct.toFixed(2)}% + ${costs.fixed.toFixed(2)} MZN fixo = ${costs.total.toFixed(2)} MZN descontados do resultado líquido.`
-          : `Custos: sem configuração de taxas/custos guardada em Configurações - pontuação de custos neutra (${UNCONFIGURED_COSTS_SCORE}/15), o resultado líquido acima ainda não desconta taxas reais que possas ter.`,
+          ? `Custos reais configurados em Configurações: ${costs.pct.toFixed(2)}% + ${costs.fixed.toFixed(2)} MZN fixo = ${costs.total.toFixed(2)} MZN.`
+          : `Custos configurados: nenhum ainda em Configurações - pontuação de custos neutra (${UNCONFIGURED_COSTS_SCORE}/15).`,
+        `Taxa de levantamento M-Pesa para a "ida" (a maioria dos anunciantes exige numerário): ${mpesaFee.toFixed(2)} MZN sobre ${referenceAmount.toFixed(2)} MZN - já descontada do resultado líquido.`,
         `Liquidez considerada: ${liquidity != null ? liquidity.toFixed(1) : 'sem dados'} anúncios em média (o mais baixo dos dois mercados).`,
         `Estabilidade considerada: volatilidade recente de até ${volatility != null ? volatility.toFixed(2) : '—'}% (7 dias) - quanto menor, mais estável o preço usado.`,
         `Dados com ${freshness === 'live' ? 'menos de 5 min' : freshness === 'delayed' ? 'até 30 min' : 'mais de 30 min'} de idade.`,

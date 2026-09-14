@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { DataTag } from '@/components/DataTag';
+import { getMPesaWithdrawalFee } from '@/lib/mpesaFees';
 
 type Pair = { asset: string; fiat: string; buyPrice: number | null; sellPrice: number | null };
 
@@ -21,6 +22,9 @@ function fmtRand(mznPerRand: number) {
  */
 export function CurrencyCycle({ pairs, initialAmount }: { pairs: Pair[]; initialAmount?: number }) {
   const [amount, setAmount] = useState(String(initialAmount ?? 1000));
+  // A maioria dos anunciantes exige levantamento M-Pesa para receberes o
+  // dinheiro da "ida" (MZN -> USDT) - um custo real, não uma taxa da Binance.
+  const [useMpesaFee, setUseMpesaFee] = useState(true);
 
   const mzn = pairs.find((p) => p.fiat === 'MZN' && p.buyPrice != null && p.sellPrice != null);
   const zar = pairs.find((p) => p.fiat === 'ZAR' && p.buyPrice != null && p.sellPrice != null);
@@ -54,11 +58,17 @@ export function CurrencyCycle({ pairs, initialAmount }: { pairs: Pair[]; initial
     const mznBack = qtyVolta * mSell;
     const voltaRate = mznBack / zarOut; // R1 = this many MZN, this trip's real return
 
-    const roundProfit = mznBack - amt;
-    const roundPct = (mznBack / amt - 1) * 100;
+    // A "ida" exige levantar `amt` MZN em numerário para pagar o vendedor -
+    // um custo real e adicional (debitado do saldo M-Pesa além do próprio
+    // levantamento), só na entrada do ciclo; a "volta" termina em MZN
+    // recebido (depósito, grátis pelo mesmo tarifário), sem taxa extra.
+    const mpesaFee = useMpesaFee ? getMPesaWithdrawalFee(amt) : 0;
 
-    return { mBuy, mSell, zBuy, zSell, midRate, zarBuyInMzn, cheaperSide, diffPct, qtyIda, zarOut, idaRate, qtyVolta, mznBack, voltaRate, roundProfit, roundPct };
-  }, [mzn, zar, amount]);
+    const roundProfit = mznBack - amt - mpesaFee;
+    const roundPct = (roundProfit / amt) * 100;
+
+    return { mBuy, mSell, zBuy, zSell, midRate, zarBuyInMzn, cheaperSide, diffPct, qtyIda, zarOut, idaRate, qtyVolta, mznBack, voltaRate, mpesaFee, roundProfit, roundPct };
+  }, [mzn, zar, amount, useMpesaFee]);
 
   if (!mzn || !zar) {
     return (
@@ -86,6 +96,11 @@ export function CurrencyCycle({ pairs, initialAmount }: { pairs: Pair[]; initial
           onChange={(e) => setAmount(e.target.value)}
           className="rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-accent"
         />
+      </label>
+
+      <label className="mt-3 flex items-center gap-2 text-xs text-muted">
+        <input type="checkbox" checked={useMpesaFee} onChange={(e) => setUseMpesaFee(e.target.checked)} className="accent-accent" />
+        Descontar taxa real de levantamento M-Pesa na &quot;ida&quot; (a maioria dos anunciantes exige-a)
       </label>
 
       {calc && (
@@ -118,6 +133,13 @@ export function CurrencyCycle({ pairs, initialAmount }: { pairs: Pair[]; initial
                 </span>
                 <span className="text-xs text-muted">custo real desta viagem: {fmtRand(calc.idaRate)}</span>
               </div>
+              {calc.mpesaFee > 0 && (
+                <div className="mt-1 text-xs text-negative">
+                  + {calc.mpesaFee.toLocaleString('pt-PT')} MZN de taxa de levantamento M-Pesa para tirar os{' '}
+                  {Number(amount).toLocaleString('pt-PT')} MZN em numerário (não entra no ZAR acima, mas desconta do resultado
+                  final).
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg border border-border bg-background p-4">
@@ -147,6 +169,12 @@ export function CurrencyCycle({ pairs, initialAmount }: { pairs: Pair[]; initial
               Começaste com {Number(amount).toLocaleString('pt-PT')} MZN, ficas com{' '}
               <span className="font-mono font-semibold">{calc.mznBack.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} MZN</span>
             </div>
+            {calc.mpesaFee > 0 && (
+              <div className="mt-1 flex justify-between text-xs text-muted">
+                <span>Taxa de levantamento M-Pesa (ida)</span>
+                <span className="font-mono">−{calc.mpesaFee.toLocaleString('pt-PT')} MZN</span>
+              </div>
+            )}
             <div className={`mt-1 font-mono text-lg font-bold ${calc.roundProfit >= 0 ? 'text-positive' : 'text-negative'}`}>
               {calc.roundProfit >= 0 ? '+' : ''}
               {calc.roundProfit.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MZN (

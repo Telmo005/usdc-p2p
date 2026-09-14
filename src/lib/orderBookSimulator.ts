@@ -114,13 +114,21 @@ export type RoundTripPlan = {
   netResult: number;
 };
 
+/** Each merchant charges their own real withdrawal fee for their own
+ *  order - the tariff is tiered, so this is NOT the same as one fee on the
+ *  combined total (splitting across N merchants means N separate real
+ *  cash withdrawals, each falling into its own bracket). Summed per step,
+ *  never approximated from the total. */
+export function mpesaFeeForSteps(steps: FillStep[]): number {
+  return steps.reduce((sum, s) => sum + getMPesaWithdrawalFee(s.fiatValue), 0);
+}
+
 /**
  * Full round trip: buy from real ads to (try to) reach `targetFiat`, then
  * sell exactly what was actually acquired to real ads on the other side -
  * never the original wish if the buy leg came up short. Applies Phase 8's
- * configured costs plus, for MZN, the real M-Pesa cash-out fee on the
- * buy leg's total outlay (most sellers require withdrawal to pay them -
- * see lib/mpesaFees.ts) when `includeMpesaFee` is true.
+ * configured costs plus, for MZN, the real M-Pesa cash-out fee - per
+ * merchant, summed (see mpesaFeeForSteps) - when `includeMpesaFee` is true.
  */
 export function planRoundTrip(
   buyAds: P2PAd[],
@@ -139,7 +147,7 @@ export function planRoundTrip(
 
   const grossResult = proceedsFromSold - costBasisForSold;
   const configuredCosts = estimateCosts(costs, buy.filledFiat).total;
-  const mpesaFee = includeMpesaFee ? getMPesaWithdrawalFee(buy.filledFiat) : 0;
+  const mpesaFee = includeMpesaFee ? mpesaFeeForSteps(buy.steps) : 0;
   const netResult = grossResult - configuredCosts - mpesaFee;
 
   return {
@@ -155,4 +163,54 @@ export function planRoundTrip(
     grossResult,
     netResult,
   };
+}
+
+export type OptimizationResult = {
+  bestAmount: number;
+  bestPlan: RoundTripPlan;
+  evaluated: number;
+  candidateRange: { min: number; max: number; step: number };
+};
+
+const DEFAULT_MIN_AMOUNT = 600; // Binance's own typical per-order minimum for these ads
+const DEFAULT_STEP = 100;
+
+/**
+ * Net profit isn't a smooth function of the amount invested: the M-Pesa
+ * tariff is tiered (a real bracket jump can make a slightly smaller amount
+ * net more than a slightly larger one - lib/mpesaFees.ts), and as the
+ * amount grows it starts eating into worse-priced ads on both legs. There's
+ * no formula to solve for the best amount directly, so this tries real
+ * candidate amounts (every `step` MZN, from `minAmount` up to the real
+ * total capacity of the buy-side book - searching further is pointless,
+ * the shortfall would only grow) and returns whichever one actually
+ * produced the highest real net result via planRoundTrip. A real search
+ * over real numbers, not a guessed optimum.
+ */
+export function findBestAmount(
+  buyAds: P2PAd[],
+  sellAds: P2PAd[],
+  costs: CapitalSettings,
+  includeMpesaFee: boolean,
+  opts?: { minAmount?: number; maxAmount?: number; step?: number }
+): OptimizationResult {
+  const minAmount = opts?.minAmount ?? DEFAULT_MIN_AMOUNT;
+  const step = opts?.step ?? DEFAULT_STEP;
+  const totalCapacity = buyAds.reduce((sum, ad) => sum + Math.min(ad.maxSingleTransAmount, ad.availableQuantity * ad.price), 0);
+  const maxAmount = Math.max(minAmount, opts?.maxAmount ?? Math.floor(totalCapacity));
+
+  let bestPlan = planRoundTrip(buyAds, sellAds, minAmount, costs, includeMpesaFee);
+  let bestAmount = minAmount;
+  let evaluated = 1;
+
+  for (let amount = minAmount + step; amount <= maxAmount; amount += step) {
+    const plan = planRoundTrip(buyAds, sellAds, amount, costs, includeMpesaFee);
+    evaluated++;
+    if (plan.netResult > bestPlan.netResult) {
+      bestPlan = plan;
+      bestAmount = amount;
+    }
+  }
+
+  return { bestAmount, bestPlan, evaluated, candidateRange: { min: minAmount, max: maxAmount, step } };
 }

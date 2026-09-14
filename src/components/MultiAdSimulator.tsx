@@ -99,28 +99,53 @@ function AdPickerList({
               Nenhum
             </button>
           </div>
-          {hasFilters && (hasFavorites || (showFeeFreeAction && hasFeeFree)) && (
+          {hasFilters && (
             <div className="flex items-center gap-1.5 border-l border-border pl-3">
               <span className="text-[10px] uppercase tracking-wide text-muted">Filtros</span>
-              {hasFavorites && (
-                <button
-                  type="button"
-                  onClick={onToggleFavoritesOnly}
-                  aria-pressed={favoritesOnly}
-                  className={`rounded-full border px-2 py-0.5 text-[11px] ${favoritesOnly ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-foreground'}`}
-                >
-                  Só favoritos
-                </button>
-              )}
-              {showFeeFreeAction && hasFeeFree && (
+              <button
+                type="button"
+                onClick={onToggleFavoritesOnly}
+                aria-pressed={favoritesOnly}
+                disabled={!hasFavorites}
+                title={
+                  watchedSet.size === 0
+                    ? 'Ainda não marcaste nenhum comerciante como favorito - faz isso em Anúncios ou Contrapartes'
+                    : !hasFavorites
+                      ? 'Nenhum dos teus favoritos está a publicar anúncios aqui agora'
+                      : undefined
+                }
+                className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                  !hasFavorites
+                    ? 'cursor-not-allowed border-border text-muted opacity-50'
+                    : favoritesOnly
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-border text-muted hover:text-foreground'
+                }`}
+              >
+                Só favoritos
+              </button>
+              {showFeeFreeAction && (
                 <button
                   type="button"
                   onClick={onToggleFeeFreeOnly}
                   aria-pressed={feeFreeOnly}
-                  className={`rounded-full border px-2 py-0.5 text-[11px] ${feeFreeOnly ? 'border-positive bg-positive/10 text-positive' : 'border-positive/40 text-positive hover:bg-positive/10'}`}
+                  disabled={!hasFeeFree}
+                  title={!hasFeeFree ? 'Nenhum anúncio visível agora aceita um método sem taxa de levantamento' : undefined}
+                  className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                    !hasFeeFree
+                      ? 'cursor-not-allowed border-border text-muted opacity-50'
+                      : feeFreeOnly
+                        ? 'border-positive bg-positive/10 text-positive'
+                        : 'border-positive/40 text-positive hover:bg-positive/10'
+                  }`}
                 >
                   Sem M-Pesa/e-Mola
                 </button>
+              )}
+              {!hasFavorites && (
+                <span className="text-[10px] italic text-muted">
+                  {watchedSet.size === 0 ? '- sem favoritos marcados' : '- nenhum a postar agora'}
+                </span>
               )}
             </div>
           )}

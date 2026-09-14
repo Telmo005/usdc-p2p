@@ -376,6 +376,11 @@ export function MultiAdSimulator({
   // vários comerciantes (buy.avgPrice/sell.avgPrice) com todos os custos
   // (configurados + M-Pesa) somados ao lado da compra, onde são cobrados.
   const effectiveBuyRate = plan && plan.buy.filledQuantity > 0 ? (plan.buy.filledFiat + plan.configuredCosts + plan.mpesaFee) / plan.buy.filledQuantity : null;
+  // "Sem M-Pesa/e-Mola" (default on) already means every ad actually used
+  // is fee-free - the discount checkbox would have zero effect then, so it
+  // only makes sense to show as an active control when at least one real
+  // step in the current plan would actually be charged.
+  const hasFeeChargingStep = plan ? plan.buy.steps.some((s) => !s.hasNonMobileMoneyMethod) : false;
 
   // Reflects every active filter (manual exclusion, favoritos, sem taxa,
   // orçamento) since it's derived from the exact same list the plan uses.
@@ -500,12 +505,18 @@ export function MultiAdSimulator({
         )}
       </p>
 
-      {mpesaApplicable && (
-        <label className="mt-3 flex items-center gap-2 text-xs text-muted">
-          <input type="checkbox" checked={useMpesaFee} onChange={(e) => setUseMpesaFee(e.target.checked)} className="accent-accent" />
-          Descontar taxa real de levantamento M-Pesa por comerciante (cada um cobra o seu próprio custo)
-        </label>
-      )}
+      {mpesaApplicable &&
+        plan &&
+        (hasFeeChargingStep ? (
+          <label className="mt-3 flex items-center gap-2 text-xs text-muted">
+            <input type="checkbox" checked={useMpesaFee} onChange={(e) => setUseMpesaFee(e.target.checked)} className="accent-accent" />
+            Descontar taxa real de levantamento M-Pesa por comerciante (cada um cobra o seu próprio custo)
+          </label>
+        ) : (
+          <p className="mt-3 text-xs text-positive">
+            Sem taxa de levantamento a descontar - todos os comerciantes usados neste plano aceitam pagamento sem M-Pesa/e-Mola.
+          </p>
+        ))}
 
       <details className="group mt-3 rounded-lg border border-border">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted marker:hidden group-open:text-foreground">

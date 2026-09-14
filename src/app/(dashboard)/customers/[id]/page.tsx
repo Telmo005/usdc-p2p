@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, User } from 'lucide-react';
+import { ArrowLeft, User, Star } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { getCustomerDetail } from '@/lib/customers';
+import { getWatchedCounterpartyIds } from '@/lib/watchlist';
+import { toggleCounterpartyWatchAction } from '@/app/actions/watchlist';
 import { StatCard } from '@/components/StatCard';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SectionCard } from '@/components/ui/SectionCard';
@@ -10,8 +12,9 @@ import { SectionCard } from '@/components/ui/SectionCard';
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { user } = await requireUser();
   const { id } = await params;
-  const customer = await getCustomerDetail(user.id, id);
+  const [customer, watchedIds] = await Promise.all([getCustomerDetail(user.id, id), getWatchedCounterpartyIds(user.id)]);
   if (!customer) notFound();
+  const watched = watchedIds.includes(id);
 
   const avgTicket =
     customer.volumeByFiat.length === 1 && customer.orderCount > 0 ? customer.volumeByFiat[0].totalValue / customer.orderCount : null;
@@ -26,13 +29,26 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-accent">
             <User size={18} />
           </span>
-          <div>
+          <div className="flex-1">
             <h1 className="text-xl font-bold">{customer.nickname}</h1>
             <p className="text-sm text-muted">
               Contraparte desde {new Date(customer.firstSeenAt).toLocaleDateString('pt-PT')} · última negociação{' '}
               {new Date(customer.lastSeenAt).toLocaleDateString('pt-PT')}
             </p>
           </div>
+          <form action={toggleCounterpartyWatchAction}>
+            <input type="hidden" name="counterpartyId" value={id} />
+            <input type="hidden" name="watched" value={String(watched)} />
+            <button
+              type="submit"
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs ${
+                watched ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-foreground'
+              }`}
+            >
+              <Star size={13} fill={watched ? 'currentColor' : 'none'} />
+              {watched ? 'Favorito' : 'Marcar como favorito'}
+            </button>
+          </form>
         </div>
       </div>
 

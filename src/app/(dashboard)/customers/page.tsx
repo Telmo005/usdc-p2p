@@ -1,10 +1,28 @@
 import Link from 'next/link';
-import { Users, Repeat } from 'lucide-react';
+import { Users, Repeat, Star } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { getCustomerSummaries } from '@/lib/customers';
+import { getWatchedCounterpartyIds } from '@/lib/watchlist';
+import { toggleCounterpartyWatchAction } from '@/app/actions/watchlist';
 import { StatCard } from '@/components/StatCard';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
+
+function WatchStar({ counterpartyId, watched }: { counterpartyId: string; watched: boolean }) {
+  return (
+    <form action={toggleCounterpartyWatchAction}>
+      <input type="hidden" name="counterpartyId" value={counterpartyId} />
+      <input type="hidden" name="watched" value={String(watched)} />
+      <button
+        type="submit"
+        aria-label={watched ? 'Remover dos favoritos' : 'Marcar como favorito'}
+        className={`rounded-lg p-1 hover:bg-surface-raised ${watched ? 'text-accent' : 'text-muted'}`}
+      >
+        <Star size={15} fill={watched ? 'currentColor' : 'none'} />
+      </button>
+    </form>
+  );
+}
 
 function fmtVolume(volumeByFiat: Array<{ fiat: string; totalValue: number }>) {
   if (volumeByFiat.length === 0) return '—';
@@ -13,7 +31,8 @@ function fmtVolume(volumeByFiat: Array<{ fiat: string; totalValue: number }>) {
 
 export default async function CustomersPage() {
   const { user } = await requireUser();
-  const customers = await getCustomerSummaries(user.id);
+  const [customers, watchedIds] = await Promise.all([getCustomerSummaries(user.id), getWatchedCounterpartyIds(user.id)]);
+  const watchedIdSet = new Set(watchedIds);
   const recurring = customers.filter((c) => c.orderCount >= 2);
 
   return (
@@ -40,6 +59,7 @@ export default async function CustomersPage() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="text-xs uppercase tracking-wide text-muted">
+                    <th className="w-8 pb-2"></th>
                     <th className="pb-2 pr-4">Nickname</th>
                     <th className="pb-2 pr-4">Ordens</th>
                     <th className="pb-2 pr-4">Volume</th>
@@ -50,6 +70,9 @@ export default async function CustomersPage() {
                 <tbody>
                   {customers.map((c) => (
                     <tr key={c.id} className="border-t border-border">
+                      <td className="py-2 pl-1">
+                        <WatchStar counterpartyId={c.id} watched={watchedIdSet.has(c.id)} />
+                      </td>
                       <td className="py-2 pr-4">
                         <Link href={`/customers/${c.id}`} className="font-medium text-accent hover:underline">
                           {c.nickname}
@@ -70,16 +93,21 @@ export default async function CustomersPage() {
 
             <div className="flex flex-col gap-2 md:hidden">
               {customers.map((c) => (
-                <Link key={c.id} href={`/customers/${c.id}`} className="block rounded-lg border border-border p-3 text-xs hover:border-accent">
+                <div key={c.id} className="rounded-lg border border-border p-3 text-xs hover:border-accent">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-accent">{c.nickname}</span>
-                    {c.orderCount >= 2 && <span className="rounded-full bg-positive/10 px-1.5 py-0.5 text-[10px] text-positive">recorrente</span>}
+                    <Link href={`/customers/${c.id}`} className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-accent">{c.nickname}</span>
+                      {c.orderCount >= 2 && <span className="rounded-full bg-positive/10 px-1.5 py-0.5 text-[10px] text-positive">recorrente</span>}
+                    </Link>
+                    <WatchStar counterpartyId={c.id} watched={watchedIdSet.has(c.id)} />
                   </div>
-                  <div className="mt-1 text-muted">
-                    {c.orderCount} ordens ({c.buyCount} compra · {c.sellCount} venda) · {fmtVolume(c.volumeByFiat)}
-                  </div>
-                  <div className="mt-1 text-muted">Última negociação: {new Date(c.lastSeenAt).toLocaleDateString('pt-PT')}</div>
-                </Link>
+                  <Link href={`/customers/${c.id}`} className="block">
+                    <div className="mt-1 text-muted">
+                      {c.orderCount} ordens ({c.buyCount} compra · {c.sellCount} venda) · {fmtVolume(c.volumeByFiat)}
+                    </div>
+                    <div className="mt-1 text-muted">Última negociação: {new Date(c.lastSeenAt).toLocaleDateString('pt-PT')}</div>
+                  </Link>
+                </div>
               ))}
             </div>
           </>

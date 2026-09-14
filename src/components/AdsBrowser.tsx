@@ -1,11 +1,12 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
 import { DataTag } from '@/components/DataTag';
+import { toggleAdvertiserWatchAction } from '@/app/actions/watchlist';
 import type { P2PAd } from '@/lib/binancePublicP2P';
 
 export type AdBook = { asset: string; fiat: string; side: 'buy' | 'sell'; ads: P2PAd[] | null; error: string | null; fetchedAt: number };
@@ -14,10 +15,31 @@ function fmt(n: number, maxFrac = 2) {
   return n.toLocaleString('pt-PT', { maximumFractionDigits: maxFrac });
 }
 
-function AdvertiserLine({ ad }: { ad: P2PAd }) {
+/** Favoriting is per advertiser nickname, not per advNo - a live ad's own
+ *  id churns constantly as it opens/closes, but the person behind it
+ *  doesn't (see lib/watchlist.ts). stopPropagation keeps the star from
+ *  also triggering the row's expand/collapse toggle. */
+function WatchStarButton({ nickname, watched }: { nickname: string; watched: boolean }) {
+  return (
+    <form action={toggleAdvertiserWatchAction} onClick={(e) => e.stopPropagation()}>
+      <input type="hidden" name="nickname" value={nickname} />
+      <input type="hidden" name="watched" value={String(watched)} />
+      <button
+        type="submit"
+        aria-label={watched ? 'Remover dos favoritos' : 'Marcar como favorito'}
+        className={`rounded-lg p-1 hover:bg-surface-raised ${watched ? 'text-accent' : 'text-muted'}`}
+      >
+        <Star size={13} fill={watched ? 'currentColor' : 'none'} />
+      </button>
+    </form>
+  );
+}
+
+function AdvertiserLine({ ad, watched }: { ad: P2PAd; watched: boolean }) {
   return (
     <>
       <div className="flex items-center gap-1.5">
+        <WatchStarButton nickname={ad.advertiserNickname} watched={watched} />
         {ad.advertiserNickname}
         {ad.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
       </div>
@@ -120,11 +142,20 @@ function AdDetail({ ad, asset, fiat, side, counterpartyId }: { ad: P2PAd; asset:
   );
 }
 
-export function AdsBrowser({ books, counterpartyByNickname = {} }: { books: AdBook[]; counterpartyByNickname?: Record<string, string> }) {
+export function AdsBrowser({
+  books,
+  counterpartyByNickname = {},
+  watchedAdvertisers = [],
+}: {
+  books: AdBook[];
+  counterpartyByNickname?: Record<string, string>;
+  watchedAdvertisers?: string[];
+}) {
   const pairs = [...new Set(books.map((b) => `${b.asset}/${b.fiat}`))];
   const [pair, setPair] = useState(pairs[0] ?? '');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [expandedAdvNo, setExpandedAdvNo] = useState<string | null>(null);
+  const watchedSet = useMemo(() => new Set(watchedAdvertisers), [watchedAdvertisers]);
 
   const book = books.find((b) => `${b.asset}/${b.fiat}` === pair && b.side === side);
   const [asset, fiat] = pair.split('/');
@@ -199,7 +230,7 @@ export function AdsBrowser({ books, counterpartyByNickname = {} }: { books: AdBo
                         <tr onClick={() => toggle(ad.advNo)} className="cursor-pointer border-t border-border hover:bg-surface-raised">
                           <td className="w-6 py-2 pl-1 text-muted">{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                           <td className="py-2 pr-4">
-                            <AdvertiserLine ad={ad} />
+                            <AdvertiserLine ad={ad} watched={watchedSet.has(ad.advertiserNickname)} />
                           </td>
                           <td className="py-2 pr-4 font-mono font-semibold text-accent">
                             {fmt(ad.price, 4)} {fiat}
@@ -231,10 +262,17 @@ export function AdsBrowser({ books, counterpartyByNickname = {} }: { books: AdBo
                 const expanded = expandedAdvNo === ad.advNo;
                 return (
                   <div key={ad.advNo} className="rounded-lg border border-border text-xs">
-                    <button type="button" onClick={() => toggle(ad.advNo)} className="flex w-full flex-col gap-1 p-3 text-left">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggle(ad.advNo)}
+                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggle(ad.advNo)}
+                      className="flex w-full flex-col gap-1 p-3 text-left"
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <span className="flex items-center gap-1.5 text-sm font-medium">
                           {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                          <WatchStarButton nickname={ad.advertiserNickname} watched={watchedSet.has(ad.advertiserNickname)} />
                           {ad.advertiserNickname}
                           {ad.advertiserIsMerchant && <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">merchant</span>}
                         </span>
@@ -263,7 +301,7 @@ export function AdsBrowser({ books, counterpartyByNickname = {} }: { books: AdBo
                           {ad.tradeMethods.join(', ')}
                         </div>
                       </div>
-                    </button>
+                    </div>
                     {expanded && (
                       <div className="border-t border-border p-3">
                         <AdDetail ad={ad} asset={asset} fiat={fiat} side={side} counterpartyId={counterpartyByNickname[ad.advertiserNickname]} />

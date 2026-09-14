@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth';
 import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
 import { fetchP2PSnapshot } from '@/lib/binancePublicP2P';
 import { getCounterpartyNicknameMap } from '@/lib/customers';
+import { getWatchedAdvertiserNicknames } from '@/lib/watchlist';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { AdsBrowser, type AdBook } from '@/components/AdsBrowser';
 
@@ -11,7 +12,10 @@ const SIDES = ['buy', 'sell'] as const;
 
 export default async function AdsPage() {
   const { user } = await requireUser();
-  const counterpartyByNickname = await getCounterpartyNicknameMap(user.id);
+  const [counterpartyByNickname, watchedAdvertisers] = await Promise.all([
+    getCounterpartyNicknameMap(user.id),
+    getWatchedAdvertiserNicknames(user.id),
+  ]);
 
   const books: AdBook[] = await Promise.all(
     TRACKED_PAIRS.flatMap(({ asset, fiat }) =>
@@ -42,7 +46,7 @@ export default async function AdsPage() {
       </div>
 
       <SectionCard title="Mercado agora">
-        <AdsBrowser books={books} counterpartyByNickname={counterpartyByNickname} />
+        <AdsBrowser books={books} counterpartyByNickname={counterpartyByNickname} watchedAdvertisers={watchedAdvertisers} />
       </SectionCard>
 
       <SectionCard title="Sobre os teus próprios anúncios" icon={Megaphone} muted>

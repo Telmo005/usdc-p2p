@@ -212,6 +212,30 @@ create table if not exists p2p_manager.notifications (
 create index if not exists notifications_user_unread_idx on p2p_manager.notifications (user_id) where read_at is null;
 
 -- ---------------------------------------------------------------------------
+-- watchlist_items: counterparties or live-ad advertisers the user starred.
+-- Binance's public ad book has no stable advertiser id, only a nickname, so
+-- an 'advertiser' entry is keyed by nickname; a 'counterparty' entry is keyed
+-- by the real counterparties.id from synced trade history. Never both.
+-- ---------------------------------------------------------------------------
+create table if not exists p2p_manager.watchlist_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  kind text not null check (kind in ('counterparty', 'advertiser')),
+  counterparty_id uuid references p2p_manager.counterparties(id) on delete cascade,
+  advertiser_nickname text,
+  created_at timestamptz not null default now(),
+  check (
+    (kind = 'counterparty' and counterparty_id is not null and advertiser_nickname is null) or
+    (kind = 'advertiser' and advertiser_nickname is not null and counterparty_id is null)
+  )
+);
+
+create unique index if not exists watchlist_items_user_counterparty_uidx
+  on p2p_manager.watchlist_items (user_id, counterparty_id) where kind = 'counterparty';
+create unique index if not exists watchlist_items_user_advertiser_uidx
+  on p2p_manager.watchlist_items (user_id, advertiser_nickname) where kind = 'advertiser';
+
+-- ---------------------------------------------------------------------------
 -- audit_log: who changed what, and when - never deleted by regular users
 -- ---------------------------------------------------------------------------
 create table if not exists p2p_manager.audit_log (
@@ -370,6 +394,7 @@ alter table p2p_manager.order_events enable row level security;
 alter table p2p_manager.wallet_movements enable row level security;
 alter table p2p_manager.alerts enable row level security;
 alter table p2p_manager.notifications enable row level security;
+alter table p2p_manager.watchlist_items enable row level security;
 alter table p2p_manager.audit_log enable row level security;
 alter table p2p_manager.sync_state enable row level security;
 alter table p2p_manager.exchange_rates enable row level security;
@@ -409,6 +434,9 @@ create policy alerts_all on p2p_manager.alerts for all using (user_id = auth.uid
 
 drop policy if exists notifications_all on p2p_manager.notifications;
 create policy notifications_all on p2p_manager.notifications for all using (user_id = auth.uid() or p2p_manager.is_admin()) with check (user_id = auth.uid());
+
+drop policy if exists watchlist_items_all on p2p_manager.watchlist_items;
+create policy watchlist_items_all on p2p_manager.watchlist_items for all using (user_id = auth.uid() or p2p_manager.is_admin()) with check (user_id = auth.uid());
 
 drop policy if exists audit_log_select on p2p_manager.audit_log;
 create policy audit_log_select on p2p_manager.audit_log for select using (user_id = auth.uid() or p2p_manager.is_admin());

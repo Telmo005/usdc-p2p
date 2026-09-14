@@ -155,7 +155,7 @@ export async function getDashboardSummary(userId: string) {
   };
 }
 
-export type MarketTick = { t: number; buy: number | null; sell: number | null };
+export type MarketTick = { t: number; buy: number | null; sell: number | null; buyDepth: number | null; sellDepth: number | null };
 export type MarketReversal = { side: 'buy' | 'sell'; newTrend: 'up' | 'down'; fromPrice: number; toPrice: number; t: number };
 export type MarketSeries = {
   asset: string;
@@ -220,9 +220,11 @@ export async function getMarketSeries(hours = 168): Promise<MarketSeries[]> {
 
     const bucketT = Math.round(new Date(row.created_at).getTime() / BUCKET_MS) * BUCKET_MS;
     const series = buckets.get(k)!;
-    if (!series.has(bucketT)) series.set(bucketT, { t: bucketT, buy: null, sell: null });
+    if (!series.has(bucketT)) series.set(bucketT, { t: bucketT, buy: null, sell: null, buyDepth: null, sellDepth: null });
     const price = Number(row.avg_top_price);
-    series.get(bucketT)![row.side] = price;
+    const tick = series.get(bucketT)!;
+    tick[row.side] = price;
+    tick[row.side === 'buy' ? 'buyDepth' : 'sellDepth'] = row.sample_size;
 
     const m = meta.get(k)!;
     if (row.side === 'buy') {

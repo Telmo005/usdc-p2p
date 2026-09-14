@@ -42,6 +42,10 @@ export async function createAlertAction(_prev: AlertActionState, formData: FormD
     condition = { kind: 'account_balance', operator, threshold };
   } else if (kind === 'account_change_pct') {
     condition = { kind: 'account_change_pct', operator, threshold };
+  } else if (kind === 'multi_ad_opportunity') {
+    const scope = String(formData.get('scope') ?? 'any') as 'any' | 'favorites';
+    if (!['any', 'favorites'].includes(scope)) return { error: 'Âmbito inválido.' };
+    condition = { kind: 'multi_ad_opportunity', scope, operator, threshold };
   } else {
     return { error: 'Tipo de alerta inválido.' };
   }

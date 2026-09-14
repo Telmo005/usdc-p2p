@@ -19,5 +19,7 @@ export function describeCondition(c: AlertCondition): string {
       return `Saldo total da conta ${cmp} ${c.threshold} MZN`;
     case 'account_change_pct':
       return `Variação do saldo total ${cmp} ${c.threshold}% face à leitura anterior`;
+    case 'multi_ad_opportunity':
+      return `Oportunidade multi-anúncio sem taxas (${c.scope === 'favorites' ? 'só favoritos' : 'orçamento configurado'}) - lucro líquido ${cmp} ${c.threshold}`;
   }
 }

@@ -4,7 +4,7 @@ import { runMarketSync } from '@/lib/marketAnalysis';
 import { getMarketSeries, getLatestAccountSnapshots, query } from '@/lib/db';
 import { getMidRates } from '@/lib/exchangeRates';
 import { recordAccountSnapshot } from '@/lib/wallet';
-import { evaluateAlerts } from '@/lib/alerts';
+import { evaluateAlerts, evaluateMultiAdOpportunityAlerts } from '@/lib/alerts';
 
 // "dados antigos" SYSTEM alert (spec section 13) - if a user's orders sync
 // hasn't run in this long, notify once per staleness episode (reset the
@@ -49,8 +49,11 @@ async function notifyStaleOrderSyncs(): Promise<void> {
  * recordAccountSnapshot), evaluates every configured alert (lib/alerts.ts's
  * evaluateAlerts - the single call site for this now, since this route is
  * the only place with both the market result and the account-snapshot
- * delta alerts need), and checks for stale orders syncs. Each step has its
- * own try/catch: a failure in one must never block the others.
+ * delta alerts need - plus evaluateMultiAdOpportunityAlerts, a separate,
+ * heavier check that fetches the real full order book, so it's its own
+ * step rather than folded into evaluateAlerts), and checks for stale
+ * orders syncs. Each step has its own try/catch: a failure in one must
+ * never block the others.
  *
  * GET, with header: Authorization: Bearer <CRON_SECRET>
  */
@@ -88,6 +91,13 @@ export async function GET(request: Request) {
     alertsError = err instanceof Error ? err.message : String(err);
   }
 
+  let multiAdAlertsError: string | null = null;
+  try {
+    await evaluateMultiAdOpportunityAlerts();
+  } catch (err) {
+    multiAdAlertsError = err instanceof Error ? err.message : String(err);
+  }
+
   let staleSyncError: string | null = null;
   try {
     await notifyStaleOrderSyncs();
@@ -95,5 +105,5 @@ export async function GET(request: Request) {
     staleSyncError = err instanceof Error ? err.message : String(err);
   }
 
-  return NextResponse.json({ ...result, accountSnapshotError, alertsError, staleSyncError });
+  return NextResponse.json({ ...result, accountSnapshotError, alertsError, multiAdAlertsError, staleSyncError });
 }

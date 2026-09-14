@@ -1,7 +1,12 @@
-import { query } from '@/lib/db';
+import { query, getProfile, getLatestAccountSnapshots } from '@/lib/db';
 import { cycleEfficiencyPct } from '@/lib/profitCalculator';
 import { sendPush } from '@/lib/messagingClient';
 import { describeCondition } from '@/lib/alertDescriptions';
+import { fetchPairBooks } from '@/lib/multiAdOpportunity';
+import { planRoundTrip } from '@/lib/orderBookSimulator';
+import { TRACKED_PAIRS } from '@/lib/marketAnalysis';
+import { fromProfile, resolveReferenceAmount } from '@/lib/capitalSettings';
+import { getWatchedAdvertiserNicknames } from '@/lib/watchlist';
 
 export type AlertCondition =
   | { kind: 'price'; asset: string; fiat: string; side: 'buy' | 'sell'; operator: 'gte' | 'lte'; threshold: number }
@@ -9,7 +14,8 @@ export type AlertCondition =
   | { kind: 'spread'; asset: string; fiat: string; operator: 'gte' | 'lte'; threshold: number }
   | { kind: 'liquidity'; asset: string; fiat: string; side: 'buy' | 'sell'; operator: 'gte' | 'lte'; threshold: number }
   | { kind: 'account_balance'; operator: 'gte' | 'lte'; threshold: number }
-  | { kind: 'account_change_pct'; operator: 'gte' | 'lte'; threshold: number };
+  | { kind: 'account_change_pct'; operator: 'gte' | 'lte'; threshold: number }
+  | { kind: 'multi_ad_opportunity'; scope: 'any' | 'favorites'; operator: 'gte' | 'lte'; threshold: number };
 
 export type Alert = {
   id: string;
@@ -119,6 +125,12 @@ export async function evaluateAlerts(input: AlertMarketInput): Promise<void> {
       case 'account_change_pct':
         currentValue = accountChangePct;
         break;
+      case 'multi_ad_opportunity':
+        // Needs the real full order book, too expensive to fetch on every
+        // tick regardless of whether anyone uses this kind - handled by
+        // the separate evaluateMultiAdOpportunityAlerts() below instead.
+        currentValue = null;
+        break;
     }
     if (currentValue == null) continue;
 
@@ -136,6 +148,74 @@ export async function evaluateAlerts(input: AlertMarketInput): Promise<void> {
       await query(
         `insert into p2p_manager.audit_log (user_id, action, entity_type, entity_id, after) values ($1, 'alert_triggered', 'alerts', $2, $3)`,
         [alert.user_id, alert.id, JSON.stringify({ currentValue, condition: c })]
+      );
+    } else if (!met && alert.is_triggered) {
+      await query(`update p2p_manager.alerts set is_triggered = false where id = $1`, [alert.id]);
+    }
+  }
+}
+
+/**
+ * Separate from evaluateAlerts() above on purpose: this kind needs the
+ * real full order book (fetchPairBooks, paginated - Phase 17/18), which is
+ * meaningfully more expensive than the single top-10 snapshot every other
+ * alert already has in memory from the cron's own tick. The count query
+ * below means a system with no such alert never pays that cost at all.
+ * "Sem taxas" = hasNonMobileMoneyMethod (Phase 15); "orçamento" = the
+ * user's own configured reference amount, not a live picker value (this
+ * runs unattended); "favoritos" = getWatchedAdvertiserNicknames (Phase 13);
+ * "compra seguida de venda com lucro" = planRoundTrip's real multi-
+ * merchant fill (Phase 10). Same edge-triggered shape as evaluateAlerts.
+ */
+export async function evaluateMultiAdOpportunityAlerts(): Promise<void> {
+  const alerts = await query<{ id: string; user_id: string; condition: AlertCondition; is_triggered: boolean }>(
+    `select id, user_id, condition, is_triggered from p2p_manager.alerts where active = true and type = 'multi_ad_opportunity'`
+  );
+  if (alerts.length === 0) return;
+
+  const [books, [latest]] = await Promise.all([
+    Promise.all(TRACKED_PAIRS.map((p) => fetchPairBooks(p.asset, p.fiat))),
+    getLatestAccountSnapshots(1),
+  ]);
+
+  for (const alert of alerts) {
+    const c = alert.condition as Extract<AlertCondition, { kind: 'multi_ad_opportunity' }>;
+    const capitalSettings = fromProfile(await getProfile(alert.user_id));
+    const { amount: referenceAmount } = resolveReferenceAmount(capitalSettings, latest?.totalMzn ?? null);
+    const watched = c.scope === 'favorites' ? new Set(await getWatchedAdvertiserNicknames(alert.user_id)) : null;
+
+    let bestNetResult: number | null = null;
+    let bestMarket: string | null = null;
+    for (const b of books) {
+      let buyAds = b.buyAds.filter((a) => a.hasNonMobileMoneyMethod);
+      if (watched) buyAds = buyAds.filter((a) => watched.has(a.advertiserNickname));
+      if (buyAds.length === 0 || b.sellAds.length === 0) continue;
+
+      const plan = planRoundTrip(buyAds, b.sellAds, referenceAmount, capitalSettings, false);
+      if (bestNetResult == null || plan.netResult > bestNetResult) {
+        bestNetResult = plan.netResult;
+        bestMarket = `${b.asset}/${b.fiat}`;
+      }
+    }
+
+    if (bestNetResult == null) {
+      if (alert.is_triggered) await query(`update p2p_manager.alerts set is_triggered = false where id = $1`, [alert.id]);
+      continue;
+    }
+
+    const met = c.operator === 'gte' ? bestNetResult >= c.threshold : bestNetResult <= c.threshold;
+
+    if (met && !alert.is_triggered) {
+      const scopeLabel = c.scope === 'favorites' ? 'entre os teus comerciantes favoritos' : 'dentro do teu orçamento configurado';
+      const title = 'Oportunidade sem taxas encontrada';
+      const body = `${bestMarket}: lucro líquido real de ${bestNetResult.toFixed(2)}, investindo ${referenceAmount.toFixed(2)}, ${scopeLabel}, sem M-Pesa/e-Mola.`;
+
+      await query(`insert into p2p_manager.notifications (user_id, type, title, body) values ($1, 'custom_alert', $2, $3)`, [alert.user_id, title, body]);
+      await sendPush(title, body);
+      await query(`update p2p_manager.alerts set is_triggered = true, last_triggered_at = now() where id = $1`, [alert.id]);
+      await query(
+        `insert into p2p_manager.audit_log (user_id, action, entity_type, entity_id, after) values ($1, 'alert_triggered', 'alerts', $2, $3)`,
+        [alert.user_id, alert.id, JSON.stringify({ bestNetResult, bestMarket, referenceAmount, condition: c })]
       );
     } else if (!met && alert.is_triggered) {
       await query(`update p2p_manager.alerts set is_triggered = false where id = $1`, [alert.id]);

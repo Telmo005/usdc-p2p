@@ -1,4 +1,4 @@
-import { Bell, BellRing, Wallet, AlertOctagon } from 'lucide-react';
+import { Bell, BellRing, Wallet, AlertOctagon, Target } from 'lucide-react';
 import { requireUser } from '@/lib/auth';
 import { getMarketSeries, getUserNotifications } from '@/lib/db';
 import { getUserAlerts } from '@/lib/alerts';
@@ -59,6 +59,14 @@ export default async function AlertsPage() {
 
       <SectionCard title="Conta" icon={Wallet} subtitle="Saldo total real da conta (Spot+Funding+Earn), lido a cada corrida da sincronização de mercado.">
         <AlertsPanel alerts={alerts} pairs={marketPairs} kinds={['account_balance', 'account_change_pct']} />
+      </SectionCard>
+
+      <SectionCard
+        title="Oportunidades sem taxas"
+        icon={Target}
+        subtitle="Testa o teu orçamento configurado (ou só os teus favoritos) contra anúncios reais sem M-Pesa/e-Mola - avisa quando encontrar um lucro líquido real acima do que indicares."
+      >
+        <AlertsPanel alerts={alerts} pairs={marketPairs} kinds={['multi_ad_opportunity']} />
       </SectionCard>
 
       <SectionCard

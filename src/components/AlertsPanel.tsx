@@ -16,6 +16,7 @@ const KIND_LABEL: Record<Kind, string> = {
   liquidity: 'Liquidez (nº de anúncios)',
   account_balance: 'Saldo total abaixo de um limite',
   account_change_pct: 'Variação inesperada do saldo',
+  multi_ad_opportunity: 'Oportunidade multi-anúncio (sem taxas)',
 };
 
 function CreateAlertForm({ pairs, kinds }: { pairs: Pair[]; kinds: Kind[] }) {
@@ -25,6 +26,7 @@ function CreateAlertForm({ pairs, kinds }: { pairs: Pair[]; kinds: Kind[] }) {
   const pair = pairs[pairIdx];
   const needsPair = kind === 'price' || kind === 'spread' || kind === 'liquidity';
   const needsSide = kind === 'price' || kind === 'liquidity';
+  const needsScope = kind === 'multi_ad_opportunity';
 
   return (
     <form action={action} className="flex flex-col gap-3">
@@ -70,6 +72,15 @@ function CreateAlertForm({ pairs, kinds }: { pairs: Pair[]; kinds: Kind[] }) {
             </select>
           </label>
         )}
+        {needsScope && (
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="text-xs text-muted">Âmbito</span>
+            <select name="scope" className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent">
+              <option value="any">Orçamento configurado</option>
+              <option value="favorites">Só favoritos</option>
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="text-xs text-muted">Condição</span>
           <select name="operator" className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent">
@@ -85,13 +96,14 @@ function CreateAlertForm({ pairs, kinds }: { pairs: Pair[]; kinds: Kind[] }) {
             {kind === 'liquidity' && 'Nº de anúncios'}
             {kind === 'account_balance' && 'Saldo (MZN)'}
             {kind === 'account_change_pct' && 'Variação (%)'}
+            {kind === 'multi_ad_opportunity' && 'Lucro líquido mínimo'}
           </span>
           <input
             name="threshold"
             type="number"
             step="any"
             required
-            defaultValue={kind === 'price' ? (pair?.sellPrice?.toFixed(2) ?? '') : kind === 'cycle' ? '0' : ''}
+            defaultValue={kind === 'price' ? (pair?.sellPrice?.toFixed(2) ?? '') : kind === 'cycle' || kind === 'multi_ad_opportunity' ? '0' : ''}
             className="rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-accent"
           />
         </label>
@@ -106,6 +118,13 @@ function CreateAlertForm({ pairs, kinds }: { pairs: Pair[]; kinds: Kind[] }) {
         <p className="text-xs text-muted">0% = avisa assim que ida e volta (MZN→USDT→ZAR→USDT→MZN) deixar de dar prejuízo - uma janela real de arbitragem.</p>
       )}
       {kind === 'account_change_pct' && <p className="text-xs text-muted">Compara com a leitura anterior (cada corrida da sincronização de mercado, ~10 min).</p>}
+      {kind === 'multi_ad_opportunity' && (
+        <p className="text-xs text-muted">
+          Testa o valor de referência configurado em Configurações contra anúncios reais que não cobram M-Pesa/e-Mola - restrito
+          aos teus favoritos se escolhido - e avisa (com notificação no telemóvel) quando uma compra seguida de venda desse valor
+          der um lucro líquido real acima do indicado. Avaliado a cada corrida da sincronização de mercado.
+        </p>
+      )}
 
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className="w-fit rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-60">

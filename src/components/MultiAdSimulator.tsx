@@ -295,6 +295,17 @@ export function MultiAdSimulator({
     return planRoundTrip(buyAdsForPlan, sellAdsForPlan, targetFiat, capitalSettings, mpesaApplicable && useMpesaFee);
   }, [pair, targetFiat, capitalSettings, mpesaApplicable, useMpesaFee, buyAdsForPlan, sellAdsForPlan]);
 
+  // Drag control range - bounded by what the currently selected buy pool
+  // could actually absorb (never lets you drag toward a value the real
+  // ads can't fill), capped at 30 000 to match the Oportunidades search
+  // ceiling. Recomputes live as filters/exclusions change the pool.
+  const sliderMin = 100;
+  const sliderMax = useMemo(() => {
+    const capacity = buyAdsForPlan.reduce((sum, a) => sum + Math.min(a.maxSingleTransAmount, a.availableQuantity * a.price), 0);
+    return Math.max(sliderMin + 900, Math.min(30_000, Math.ceil(capacity)));
+  }, [buyAdsForPlan]);
+  const sliderStep = sliderMax > 10_000 ? 100 : sliderMax > 2_000 ? 50 : 10;
+
   const clearSimulation = () => {
     setAmount(String(initialAmount ?? 1000));
     setUseMpesaFee(false);
@@ -447,6 +458,20 @@ export function MultiAdSimulator({
               className="w-40 rounded-lg border border-border bg-background px-3 py-2.5 text-lg font-semibold outline-none focus:border-accent"
             />
             <span className="text-sm text-muted">{pair.fiat}</span>
+          </div>
+          <input
+            type="range"
+            min={sliderMin}
+            max={sliderMax}
+            step={sliderStep}
+            value={Math.min(Math.max(Math.round(targetFiat || 0), sliderMin), sliderMax)}
+            onChange={(e) => setAmount(e.target.value)}
+            className="mt-1 w-64 accent-accent sm:w-80"
+          />
+          <div className="flex w-64 justify-between text-[10px] text-muted sm:w-80">
+            <span>{fmt(sliderMin)}</span>
+            <span>arrasta para ver o plano mudar</span>
+            <span>{fmt(sliderMax)}</span>
           </div>
         </label>
 

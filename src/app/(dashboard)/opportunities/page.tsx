@@ -75,7 +75,7 @@ export default async function OpportunitiesPage({
       <SectionCard
         title="Melhor valor para simular agora"
         icon={Search}
-        subtitle="Procura real entre 600 e 30 000 MZN (passo de 1 MZN, nunca um valor saltado) nos anúncios reais de compra e venda de cada par - testa sempre o mercado todo e, para MZN, também só com comerciantes sem taxa de levantamento (M-Pesa/e-Mola), ficando com o resultado líquido real mais alto dos dois. Só aparece como recomendação quando esse resultado é positivo."
+        subtitle="Procura real entre 600 e 30 000 MZN (passo de 1 MZN, nunca um valor saltado) nos anúncios reais de compra e venda de cada par - só aparece como recomendação quando o resultado líquido real é positivo."
       >
         <div className="mb-3">
           <OpportunityFilters favoritesOnly={favoritesOnly} includeFees={includeFees} hasFavorites={watchedAdvertisers.length > 0} />
@@ -91,7 +91,7 @@ export default async function OpportunitiesPage({
               ? `${unprofitableMultiAd
                   .map(
                     (o) =>
-                      `USDT/${o.fiat} (testei ${o.result.evaluated} valores reais entre ${fmt(o.result.candidateRange.min)} e ${fmt(o.result.candidateRange.max)} ${o.fiat} contra ${o.buyAdsCount} anúncios de compra${favoritesOnly ? ' favoritos' : ''}${o.usedFeeFreeOnly ? ' sem taxa' : ''} e ${o.sellAdsCount} de venda)`
+                      `USDT/${o.fiat} (testei ${o.result.evaluated} valores reais entre ${fmt(o.result.candidateRange.min)} e ${fmt(o.result.candidateRange.max)} ${o.fiat} contra ${o.buyAdsCount} anúncios de compra${favoritesOnly ? ' favoritos' : ''} e ${o.sellAdsCount} de venda)`
                   )
                   .join('; ')} - nenhuma combinação deu lucro líquido positivo neste momento.`
               : 'Sem anúncios reais suficientes neste momento para procurar um valor ideal.'}
@@ -142,13 +142,6 @@ export default async function OpportunitiesPage({
                         ? `Este valor atingiu o teto da pesquisa (${fmt(result.candidateRange.max)} ${o.fiat}) - com mais liquidez visível o valor ideal podia ser ainda maior.`
                         : 'Este valor ficou abaixo do teto da pesquisa porque a partir dele o lucro líquido real começa a cair.'}
                     </li>
-                    {o.usedFeeFreeOnly && (
-                      <li>
-                        Este valor só usa comerciantes que aceitam pagamento sem ser M-Pesa/e-Mola (ex.: transferência bancária) -
-                        sem custo de levantamento nenhum, por isso venceu mesmo com um valor mais pequeno do que testar o mercado
-                        todo.
-                      </li>
-                    )}
                   </ul>
                   <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>

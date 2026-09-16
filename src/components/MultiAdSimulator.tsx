@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { planRoundTrip, findBestAmount, type OptimizationResult } from '@/lib/orderBookSimulator';
+import { planRoundTrip, findBestAmount, type OptimizationResult, type RoundTripPlan } from '@/lib/orderBookSimulator';
 import { checkAdCompatibility, summarizeCompatibility, type BudgetMode } from '@/lib/budgetCompatibility';
 import { refreshPairBooksAction } from '@/app/actions/marketData';
 import { formatAge, getFreshness } from '@/lib/dataQuality';
-import { X, Search, Star, ChevronDown, RefreshCw, Sparkles } from 'lucide-react';
+import { X, Search, Star, ChevronDown, RefreshCw, Sparkles, TrendingUp } from 'lucide-react';
 import type { P2PAd } from '@/lib/binancePublicP2P';
 import type { PairBooks } from '@/lib/multiAdOpportunity';
 import type { CapitalSettings } from '@/lib/capitalSettings';
@@ -283,6 +283,28 @@ export function MultiAdSimulator({
     return planRoundTrip(buyAdsForPlan, sellAdsForPlan, targetFiat, capitalSettings, mpesaApplicable && useMpesaFee);
   }, [pair, targetFiat, capitalSettings, mpesaApplicable, useMpesaFee, buyAdsForPlan, sellAdsForPlan]);
 
+  // Profit alert - edge-triggered exactly like the app's other alerts
+  // (lib/alerts.ts's is_triggered): pops up the instant the CURRENT amount
+  // and filters (favoritos, exclusões, orçamento) cross from not-profitable
+  // into profitable, whether that's from a fresh auto-refresh (every 10s)
+  // or from you adjusting the amount/filters yourself. wasProfitableRef
+  // tracks the last known state so it fires once per episode, not on every
+  // tick while it stays profitable - clicking OK just closes the current
+  // popup, it doesn't need to "re-arm" anything, since re-arming already
+  // happens naturally the moment profit dips back to zero or below.
+  const wasProfitableRef = useRef(false);
+  const [profitAlert, setProfitAlert] = useState<{ asset: string; fiat: string; targetFiat: number; plan: RoundTripPlan } | null>(null);
+  useEffect(() => {
+    if (plan && plan.netResult > 0 && pair) {
+      if (!wasProfitableRef.current) {
+        setProfitAlert({ asset: pair.asset, fiat: pair.fiat, targetFiat, plan });
+      }
+      wasProfitableRef.current = true;
+    } else {
+      wasProfitableRef.current = false;
+    }
+  }, [plan, pair, targetFiat]);
+
   // Drag control range - bounded by what the currently selected buy pool
   // could actually absorb (never lets you drag toward a value the real
   // ads can't fill), capped at 30 000 to match the Oportunidades search
@@ -351,7 +373,7 @@ export function MultiAdSimulator({
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') handleRefresh();
-    }, 30_000);
+    }, 10_000);
     return () => clearInterval(interval);
   }, [autoRefresh, handleRefresh]);
 
@@ -432,6 +454,7 @@ export function MultiAdSimulator({
   const usedLabel = budgetMode === 'respect_budget' ? 'compatíveis' : 'selecionados';
 
   return (
+    <>
     <div className="rounded-xl border border-border bg-surface p-5">
       <h2 className="text-base font-semibold">Simular compra em vários anúncios</h2>
       <p className="mt-1 text-xs text-muted">
@@ -576,10 +599,10 @@ export function MultiAdSimulator({
 
         <label className="flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-accent" />
-          Atualizar automaticamente a cada 30s
+          Atualizar automaticamente a cada 10s
         </label>
 
-        <span className={`text-xs ${getFreshness(pair.fetchedAt, { delayedAfterMs: 30_000, staleAfterMs: 180_000 }) === 'stale' ? 'text-negative' : 'text-muted'}`}>
+        <span className={`text-xs ${getFreshness(pair.fetchedAt, { delayedAfterMs: 20_000, staleAfterMs: 180_000 }) === 'stale' ? 'text-negative' : 'text-muted'}`}>
           Atualizado {formatAge(pair.fetchedAt)}
         </span>
       </div>
@@ -749,5 +772,48 @@ export function MultiAdSimulator({
         </>
       )}
     </div>
+
+    {profitAlert && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+        <div className="w-full max-w-lg rounded-xl border-2 border-positive bg-surface p-5 shadow-2xl">
+          <div className="flex items-center gap-2">
+            <span className="flex h-9 w-9 shrink-0 animate-pulse items-center justify-center rounded-full bg-positive/15 text-positive">
+              <TrendingUp size={18} />
+            </span>
+            <div>
+              <h3 className="text-base font-bold text-positive">Lucro encontrado agora!</h3>
+              <p className="text-xs text-muted">
+                USDT/{profitAlert.fiat} - {fmt(profitAlert.targetFiat)} {profitAlert.fiat} investidos, com os teus filtros atuais.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-lg border border-positive/40 bg-positive/10 p-3 text-center">
+            <div className="text-xs text-muted">Lucro líquido</div>
+            <div className="font-mono text-2xl font-bold text-positive">
+              +{fmt(profitAlert.plan.netResult)} {profitAlert.fiat}
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Comprar de</div>
+            <FillStepList steps={profitAlert.plan.buy.steps} asset={profitAlert.asset} fiat={profitAlert.fiat} />
+          </div>
+          <div className="mt-3">
+            <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Vender para</div>
+            <FillStepList steps={profitAlert.plan.sell.steps} asset={profitAlert.asset} fiat={profitAlert.fiat} />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setProfitAlert(null)}
+            className="mt-4 w-full rounded-lg bg-positive px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

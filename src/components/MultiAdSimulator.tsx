@@ -320,10 +320,14 @@ export function MultiAdSimulator({
   // amount from 600 (Binance's typical per-order floor) up to whatever's
   // currently typed - your own budget ceiling - against exactly the buy/
   // sell pool the plan below already uses (favoritos, exclusões manuais e
-  // orçamento já aplicados), e adota o valor que deu o melhor resultado
-  // líquido real. Mesmo motor de busca das Oportunidades (findBestAmount),
-  // só que aplicado ao teu orçamento e aos teus filtros, não ao mercado
-  // inteiro até 30 000.
+  // orçamento já aplicados). Usa a estratégia 'first_profitable' (lib/
+  // orderBookSimulator.ts), não 'maximize': o "ideal" aqui é o valor
+  // MÍNIMO que já dá lucro, não o que dá mais lucro absoluto - um valor
+  // maior podia vencer só por mover mais capital, o que não é "mais
+  // ideal", é só mais dinheiro parado ali - per correção direta do
+  // utilizador. Mesmo motor de busca das Oportunidades (findBestAmount),
+  // só que com outra estratégia e aplicado ao teu orçamento/filtros, não
+  // ao mercado inteiro até 30 000.
   const canOptimize = !!pair && targetFiat > 0 && buyAdsForPlan.length > 0 && sellAdsForPlan.length > 0;
   const handleOptimize = () => {
     if (!pair || !(targetFiat > 0)) return;
@@ -333,6 +337,7 @@ export function MultiAdSimulator({
       minAmount,
       maxAmount,
       step: 1,
+      strategy: 'first_profitable',
     });
     // Só substitui o valor que escreveste quando REALMENTE encontrou lucro.
     // "bestAmount" existe sempre (é só "o menos mau" quando nada é
@@ -493,7 +498,7 @@ export function MultiAdSimulator({
               title={
                 !canOptimize
                   ? 'Precisa de um valor e de pelo menos um anúncio de compra e de venda selecionados'
-                  : `Testa cada valor real entre 600 e ${fmt(targetFiat)} ${pair.fiat} e usa o que der mais lucro`
+                  : `Testa cada valor real entre 600 e ${fmt(targetFiat)} ${pair.fiat} e para no menor que já dá lucro`
               }
               className="flex items-center gap-1.5 rounded-lg border border-accent/40 px-3 py-2.5 text-xs font-medium text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
             >
@@ -523,7 +528,7 @@ export function MultiAdSimulator({
               {optimizeResult.isProfitable ? (
                 <>
                   Testei {optimizeResult.evaluated} valores reais entre {fmt(optimizeResult.candidateRange.min)} e{' '}
-                  {fmt(optimizeResult.candidateRange.max)} {pair.fiat} - o melhor foi{' '}
+                  {fmt(optimizeResult.candidateRange.max)} {pair.fiat} - o valor ideal (o mais pequeno que já dá lucro) é{' '}
                   <strong className="text-foreground">
                     {fmt(optimizeResult.bestAmount)} {pair.fiat}
                   </strong>{' '}
@@ -533,7 +538,7 @@ export function MultiAdSimulator({
                   </span>
                   .{' '}
                   {optimizeResult.hitCeiling &&
-                    'Este valor atingiu o teto do teu orçamento - com mais dinheiro disponível o valor ideal podia ser ainda maior.'}
+                    'Precisaste do teto do teu orçamento para conseguir lucro - nada abaixo disso lucrava.'}
                 </>
               ) : (
                 <>

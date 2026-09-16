@@ -203,19 +203,35 @@ const DEFAULT_STEP = 1;
  * no formula to solve for the best amount directly, so this tries every
  * real candidate amount (every whole MZN, from `minAmount` up to whichever
  * is smaller of `maxAmount` and the book's own real capacity - searching
- * beyond either is pointless) and returns whichever one actually produced
- * the highest real net result via planRoundTrip. A real search over real
- * numbers, not a guessed optimum, and never skips a value.
+ * beyond either is pointless) and returns one, chosen per `strategy`. A real
+ * search over real numbers, not a guessed optimum, and never skips a value.
+ *
+ * `strategy` (default 'maximize'):
+ * - 'maximize' - the amount with the single highest real net result across
+ *   the whole range. Oportunidades uses this (unset = default): its whole
+ *   point is "what's the most profitable thing happening right now."
+ * - 'first_profitable' - the SMALLEST amount that already clears zero
+ *   profit, stopping the search the instant one is found instead of
+ *   scanning the rest of the range. Deliberately different from
+ *   'maximize': a bigger amount can win on 'maximize' purely by moving
+ *   more volume at a similar or even worse margin, which ties up more
+ *   capital for the same qualitative outcome ("this pair is profitable
+ *   right now"). The multi-ad simulator's "Encontrar valor ideal" button
+ *   uses this - per the user's own correction, "o valor ideal é o mínimo
+ *   de lucro... o primeiro ponto de lucro, não o melhor ou o último."
+ *   Falls back to the least-bad amount, same as 'maximize', when nothing
+ *   in the range is actually profitable.
  */
 export function findBestAmount(
   buyAds: P2PAd[],
   sellAds: P2PAd[],
   costs: CapitalSettings,
   includeMpesaFee: boolean,
-  opts?: { minAmount?: number; maxAmount?: number; step?: number }
+  opts?: { minAmount?: number; maxAmount?: number; step?: number; strategy?: 'maximize' | 'first_profitable' }
 ): OptimizationResult {
   const minAmount = opts?.minAmount ?? DEFAULT_MIN_AMOUNT;
   const step = opts?.step ?? DEFAULT_STEP;
+  const strategy = opts?.strategy ?? 'maximize';
   const totalCapacity = buyAds.reduce((sum, ad) => sum + Math.min(ad.maxSingleTransAmount, ad.availableQuantity * ad.price), 0);
   const ceiling = opts?.maxAmount ?? DEFAULT_MAX_AMOUNT;
   // Capacity only ever LOWERS the ceiling, and only when it's still above
@@ -234,12 +250,17 @@ export function findBestAmount(
   let bestAmount = minAmount;
   let evaluated = 1;
 
-  for (let amount = minAmount + step; amount <= maxAmount; amount += step) {
-    const plan = planRoundTrip(buyAds, sellAds, amount, costs, includeMpesaFee);
-    evaluated++;
-    if (plan.netResult > bestPlan.netResult) {
-      bestPlan = plan;
-      bestAmount = amount;
+  if (!(strategy === 'first_profitable' && bestPlan.netResult > 0)) {
+    for (let amount = minAmount + step; amount <= maxAmount; amount += step) {
+      const plan = planRoundTrip(buyAds, sellAds, amount, costs, includeMpesaFee);
+      evaluated++;
+      if (plan.netResult > bestPlan.netResult) {
+        bestPlan = plan;
+        bestAmount = amount;
+      }
+      // Smallest profitable amount found - stop right here rather than
+      // keep scanning for a bigger (but not "more ideal") number.
+      if (strategy === 'first_profitable' && plan.netResult > 0) break;
     }
   }
 

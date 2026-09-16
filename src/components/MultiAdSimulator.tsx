@@ -351,7 +351,7 @@ export function MultiAdSimulator({
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') handleRefresh();
-    }, 60_000);
+    }, 30_000);
     return () => clearInterval(interval);
   }, [autoRefresh, handleRefresh]);
 
@@ -576,7 +576,7 @@ export function MultiAdSimulator({
 
         <label className="flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="accent-accent" />
-          Atualizar automaticamente a cada 60s
+          Atualizar automaticamente a cada 30s
         </label>
 
         <span className={`text-xs ${getFreshness(pair.fetchedAt, { delayedAfterMs: 30_000, staleAfterMs: 180_000 }) === 'stale' ? 'text-negative' : 'text-muted'}`}>

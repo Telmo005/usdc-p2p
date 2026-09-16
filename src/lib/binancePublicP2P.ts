@@ -132,25 +132,45 @@ export async function fetchP2PSnapshot(asset: string, fiat: string, side: 'buy' 
 }
 
 const FULL_BOOK_PAGE_SIZE = 20; // Binance's own real per-page cap
-const FULL_BOOK_MAX_PAGES = 6; // 120 ads is already far beyond what's usable - a real ceiling, not a guess at "everyone"
+// Raised from 6 (120 ads) after a real, reported case: a favorited
+// merchant ranked beyond the old 120-ad cutoff never appeared in the
+// multi-ad simulator's picker no matter how many times it was refreshed
+// - a deterministic truncation by price ranking, not a freshness problem.
+// 500 ads is still a real ceiling (protects against a pathological/broken
+// Binance response that never returns a short page), not a guess at
+// "everyone" - but it's far beyond any real market depth seen so far.
+const FULL_BOOK_MAX_PAGES = 25;
+// Pages are fetched in small parallel batches, not strictly one at a
+// time - a market that genuinely needs many pages would otherwise pay
+// for each page's own round trip serially, which matters more now that
+// the multi-ad simulator auto-refreshes every 10s.
+const FULL_BOOK_BATCH_SIZE = 5;
 
 /**
  * "Não vejo todos os anunciantes" - fetchP2PSnapshot alone only ever
  * returns the first page (confirmed live: MZN/buy has 70 real ads across
  * 4 pages, but a single rows=20 call only sees the first 20). This walks
- * real pages until Binance returns a short page (the real end of the
- * book) or FULL_BOOK_MAX_PAGES is hit, and concatenates the real ads -
- * used wherever a user actually browses/picks a specific advertiser
+ * real pages (in batches of FULL_BOOK_BATCH_SIZE, fetched concurrently)
+ * until Binance returns a short page (the real end of the book) or
+ * FULL_BOOK_MAX_PAGES is hit, and concatenates the real ads in page order
+ * - used wherever a user actually browses/picks a specific advertiser
  * (Anúncios, the multi-ad simulator), not for the aggregate cron tick
  * (runMarketSync), which only ever needed the top few for its average.
  */
 export async function fetchFullP2POrderBook(asset: string, fiat: string, side: 'buy' | 'sell'): Promise<P2PSnapshot | null> {
   const allAds: P2PAd[] = [];
-  for (let page = 1; page <= FULL_BOOK_MAX_PAGES; page++) {
-    const snapshot = await fetchP2PSnapshot(asset, fiat, side, FULL_BOOK_PAGE_SIZE, page);
-    if (!snapshot || snapshot.ads.length === 0) break;
-    allAds.push(...snapshot.ads);
-    if (snapshot.ads.length < FULL_BOOK_PAGE_SIZE) break; // short page = real end of the book
+  batches: for (let batchStart = 1; batchStart <= FULL_BOOK_MAX_PAGES; batchStart += FULL_BOOK_BATCH_SIZE) {
+    const pages: number[] = [];
+    for (let p = batchStart; p < batchStart + FULL_BOOK_BATCH_SIZE && p <= FULL_BOOK_MAX_PAGES; p++) pages.push(p);
+    // Promise.all preserves input order in its resolved array regardless
+    // of which request finishes first, so snapshots[i] is always pages[i]
+    // - real page order is what decides where the book actually ends.
+    const snapshots = await Promise.all(pages.map((p) => fetchP2PSnapshot(asset, fiat, side, FULL_BOOK_PAGE_SIZE, p)));
+    for (const snapshot of snapshots) {
+      if (!snapshot || snapshot.ads.length === 0) break batches;
+      allAds.push(...snapshot.ads);
+      if (snapshot.ads.length < FULL_BOOK_PAGE_SIZE) break batches; // short page = real end of the book
+    }
   }
 
   if (allAds.length === 0) return null;

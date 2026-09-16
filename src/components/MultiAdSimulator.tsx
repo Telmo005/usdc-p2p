@@ -334,7 +334,12 @@ export function MultiAdSimulator({
       maxAmount,
       step: 1,
     });
-    setAmount(String(result.bestAmount));
+    // Só substitui o valor que escreveste quando REALMENTE encontrou lucro.
+    // "bestAmount" existe sempre (é só "o menos mau" quando nada é
+    // rentável) - aplicá-lo às cegas mudava o teu campo para um valor que
+    // também não presta, sem nenhum ganho real, o que é pior do que não
+    // fazer nada. Sem lucro, o teu valor fica exatamente como estava.
+    if (result.isProfitable) setAmount(String(result.bestAmount));
     setOptimizeResult(result);
   };
 
@@ -510,30 +515,37 @@ export function MultiAdSimulator({
             <span>{fmt(sliderMax)}</span>
           </div>
           {optimizeResult && (
-            <div className="w-64 rounded-lg border border-accent/30 bg-accent/5 p-2 text-[11px] text-muted sm:w-80">
-              Testei {optimizeResult.evaluated} valores reais entre {fmt(optimizeResult.candidateRange.min)} e{' '}
-              {fmt(optimizeResult.candidateRange.max)} {pair.fiat} - o melhor foi{' '}
-              <strong className="text-foreground">
-                {fmt(optimizeResult.bestAmount)} {pair.fiat}
-              </strong>
+            <div
+              className={`w-64 rounded-lg border p-2 text-[11px] sm:w-80 ${
+                optimizeResult.isProfitable ? 'border-accent/30 bg-accent/5 text-muted' : 'border-negative/30 bg-negative/5 text-muted'
+              }`}
+            >
               {optimizeResult.isProfitable ? (
                 <>
-                  {' '}
+                  Testei {optimizeResult.evaluated} valores reais entre {fmt(optimizeResult.candidateRange.min)} e{' '}
+                  {fmt(optimizeResult.candidateRange.max)} {pair.fiat} - o melhor foi{' '}
+                  <strong className="text-foreground">
+                    {fmt(optimizeResult.bestAmount)} {pair.fiat}
+                  </strong>{' '}
                   com lucro líquido{' '}
                   <span className="font-semibold text-positive">
                     +{fmt(optimizeResult.bestPlan.netResult)} {pair.fiat}
                   </span>
-                  .
+                  .{' '}
+                  {optimizeResult.hitCeiling &&
+                    'Este valor atingiu o teto do teu orçamento - com mais dinheiro disponível o valor ideal podia ser ainda maior.'}
                 </>
               ) : (
                 <>
-                  {' '}
-                  mas nenhum valor neste intervalo deu lucro (o menos mau foi{' '}
-                  {fmt(optimizeResult.bestPlan.netResult)} {pair.fiat}).
+                  Testei {optimizeResult.evaluated} valores reais entre {fmt(optimizeResult.candidateRange.min)} e{' '}
+                  {fmt(optimizeResult.candidateRange.max)} {pair.fiat} - nenhum deu lucro líquido positivo (o menos mau foi{' '}
+                  {fmt(optimizeResult.bestPlan.netResult)} {pair.fiat}).{' '}
+                  <strong className="text-foreground">
+                    Mantive o teu valor em {fmt(targetFiat)} {pair.fiat}
+                  </strong>
+                  , já que nenhum outro valor testado era melhor.
                 </>
               )}
-              {optimizeResult.hitCeiling &&
-                ' Este valor atingiu o teto do teu orçamento - com mais dinheiro disponível o valor ideal podia ser ainda maior.'}
             </div>
           )}
         </label>

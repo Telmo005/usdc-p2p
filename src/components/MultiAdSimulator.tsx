@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { planRoundTrip } from '@/lib/orderBookSimulator';
+import { planRoundTrip, findBestAmount, type OptimizationResult } from '@/lib/orderBookSimulator';
 import { checkAdCompatibility, summarizeCompatibility, type BudgetMode } from '@/lib/budgetCompatibility';
 import { refreshPairBooksAction } from '@/app/actions/marketData';
 import { formatAge, getFreshness } from '@/lib/dataQuality';
-import { X, Search, Star, ChevronDown, RefreshCw } from 'lucide-react';
+import { X, Search, Star, ChevronDown, RefreshCw, Sparkles } from 'lucide-react';
 import type { P2PAd } from '@/lib/binancePublicP2P';
 import type { PairBooks } from '@/lib/multiAdOpportunity';
 import type { CapitalSettings } from '@/lib/capitalSettings';
@@ -212,11 +212,21 @@ export function MultiAdSimulator({
     initialPairIndex != null && initialPairIndex >= 0 && initialPairIndex < pairs.length ? initialPairIndex : 0
   );
   const [amount, setAmount] = useState(String(initialAmount ?? 1000));
-  // Starts unchecked - with "Sem M-Pesa/e-Mola" also defaulting on, there's
-  // nothing to discount initially anyway. Left as a real, always-visible
-  // choice (just disabled, never hidden, while it has no effect) so
-  // turning that filter off and using a fee-charging merchant is still one
-  // click away, not a control that reappears out of nowhere.
+  // Set only right after "Encontrar valor ideal" runs - holds the search
+  // summary (how many amounts were tried, the real range, whether the
+  // budget ceiling was the limiting factor) so it can be shown next to the
+  // field. Cleared whenever the amount changes some other way (typing,
+  // dragging, clearing, switching pair) so it never claims to describe a
+  // number it didn't actually produce.
+  const [optimizeResult, setOptimizeResult] = useState<OptimizationResult | null>(null);
+  const updateAmount = (value: string) => {
+    setAmount(value);
+    setOptimizeResult(null);
+  };
+  // Starts unchecked - left as a real, always-visible choice (just
+  // disabled, never hidden, while it has no effect) so turning it on for a
+  // fee-charging merchant is still one click away, not a control that
+  // reappears out of nowhere.
   const [useMpesaFee, setUseMpesaFee] = useState(false);
   const [budgetMode, setBudgetMode] = useState<BudgetMode>('no_restriction');
   // Keyed by the advertiser's nickname, not the ad's own advNo - the
@@ -284,8 +294,31 @@ export function MultiAdSimulator({
   }, [buyAdsForPlan]);
   const sliderStep = sliderMax > 10_000 ? 100 : sliderMax > 2_000 ? 50 : 10;
 
+  // "Encontrar valor ideal": triangula compra e venda testando todo real
+  // amount from 600 (Binance's typical per-order floor) up to whatever's
+  // currently typed - your own budget ceiling - against exactly the buy/
+  // sell pool the plan below already uses (favoritos, exclusões manuais e
+  // orçamento já aplicados), e adota o valor que deu o melhor resultado
+  // líquido real. Mesmo motor de busca das Oportunidades (findBestAmount),
+  // só que aplicado ao teu orçamento e aos teus filtros, não ao mercado
+  // inteiro até 30 000.
+  const canOptimize = !!pair && targetFiat > 0 && buyAdsForPlan.length > 0 && sellAdsForPlan.length > 0;
+  const handleOptimize = () => {
+    if (!pair || !(targetFiat > 0)) return;
+    const maxAmount = targetFiat;
+    const minAmount = Math.min(600, maxAmount);
+    const result = findBestAmount(buyAdsForPlan, sellAdsForPlan, capitalSettings, mpesaApplicable && useMpesaFee, {
+      minAmount,
+      maxAmount,
+      step: 1,
+    });
+    setAmount(String(result.bestAmount));
+    setOptimizeResult(result);
+  };
+
   const clearSimulation = () => {
     setAmount(String(initialAmount ?? 1000));
+    setOptimizeResult(null);
     setUseMpesaFee(false);
     setExcludedNicknames(new Set());
     setBudgetMode('no_restriction');
@@ -421,10 +454,23 @@ export function MultiAdSimulator({
               type="number"
               step="any"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => updateAmount(e.target.value)}
               className="w-40 rounded-lg border border-border bg-background px-3 py-2.5 text-lg font-semibold outline-none focus:border-accent"
             />
             <span className="text-sm text-muted">{pair.fiat}</span>
+            <button
+              type="button"
+              onClick={handleOptimize}
+              disabled={!canOptimize}
+              title={
+                !canOptimize
+                  ? 'Precisa de um valor e de pelo menos um anúncio de compra e de venda selecionados'
+                  : `Testa cada valor real entre 600 e ${fmt(targetFiat)} ${pair.fiat} e usa o que der mais lucro`
+              }
+              className="flex items-center gap-1.5 rounded-lg border border-accent/40 px-3 py-2.5 text-xs font-medium text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <Sparkles size={13} /> Encontrar valor ideal
+            </button>
           </div>
           <input
             type="range"
@@ -432,7 +478,7 @@ export function MultiAdSimulator({
             max={sliderMax}
             step={sliderStep}
             value={Math.min(Math.max(Math.round(targetFiat || 0), sliderMin), sliderMax)}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => updateAmount(e.target.value)}
             className="mt-1 w-64 accent-accent sm:w-80"
           />
           <div className="flex w-64 justify-between text-[10px] text-muted sm:w-80">
@@ -440,6 +486,33 @@ export function MultiAdSimulator({
             <span>arrasta para ver o plano mudar</span>
             <span>{fmt(sliderMax)}</span>
           </div>
+          {optimizeResult && (
+            <div className="w-64 rounded-lg border border-accent/30 bg-accent/5 p-2 text-[11px] text-muted sm:w-80">
+              Testei {optimizeResult.evaluated} valores reais entre {fmt(optimizeResult.candidateRange.min)} e{' '}
+              {fmt(optimizeResult.candidateRange.max)} {pair.fiat} - o melhor foi{' '}
+              <strong className="text-foreground">
+                {fmt(optimizeResult.bestAmount)} {pair.fiat}
+              </strong>
+              {optimizeResult.isProfitable ? (
+                <>
+                  {' '}
+                  com lucro líquido{' '}
+                  <span className="font-semibold text-positive">
+                    +{fmt(optimizeResult.bestPlan.netResult)} {pair.fiat}
+                  </span>
+                  .
+                </>
+              ) : (
+                <>
+                  {' '}
+                  mas nenhum valor neste intervalo deu lucro (o menos mau foi{' '}
+                  {fmt(optimizeResult.bestPlan.netResult)} {pair.fiat}).
+                </>
+              )}
+              {optimizeResult.hitCeiling &&
+                ' Este valor atingiu o teto do teu orçamento - com mais dinheiro disponível o valor ideal podia ser ainda maior.'}
+            </div>
+          )}
         </label>
 
         <label className="flex flex-col gap-1.5 text-sm">
@@ -476,7 +549,10 @@ export function MultiAdSimulator({
               <button
                 key={`${p.asset}-${p.fiat}`}
                 type="button"
-                onClick={() => setPairIdx(i)}
+                onClick={() => {
+                  setPairIdx(i);
+                  setOptimizeResult(null);
+                }}
                 className={`rounded-full border px-3 py-1.5 text-xs ${
                   i === pairIdx ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-foreground'
                 }`}

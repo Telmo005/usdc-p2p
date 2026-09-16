@@ -218,7 +218,17 @@ export function findBestAmount(
   const step = opts?.step ?? DEFAULT_STEP;
   const totalCapacity = buyAds.reduce((sum, ad) => sum + Math.min(ad.maxSingleTransAmount, ad.availableQuantity * ad.price), 0);
   const ceiling = opts?.maxAmount ?? DEFAULT_MAX_AMOUNT;
-  const maxAmount = Math.max(minAmount, Math.min(ceiling, totalCapacity > 0 ? Math.floor(totalCapacity) : ceiling));
+  // Capacity only ever LOWERS the ceiling, and only when it's still above
+  // minAmount - a real market/pool this thin (e.g. after narrowing down to
+  // a couple of favorited merchants) must never collapse the range below
+  // the floor being tested. Before this guard, a pool whose total capacity
+  // fell under minAmount forced maxAmount down to exactly minAmount,
+  // silently skipping the entire requested range (the loop below never ran
+  // once) and always reporting bestAmount = minAmount regardless of what
+  // ceiling was actually asked for - exactly the "sempre fica preso nos
+  // 600" bug this fixes.
+  const cappedByCapacity = totalCapacity > 0 ? Math.floor(totalCapacity) : ceiling;
+  const maxAmount = cappedByCapacity >= minAmount ? Math.min(ceiling, cappedByCapacity) : ceiling;
 
   let bestPlan = planRoundTrip(buyAds, sellAds, minAmount, costs, includeMpesaFee);
   let bestAmount = minAmount;

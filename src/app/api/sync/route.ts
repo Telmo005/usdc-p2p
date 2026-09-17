@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getApiUser } from '@/lib/apiAuth';
 import { query } from '@/lib/db';
 import { fetchAllC2COrders, type BinanceC2COrder } from '@/lib/binancePrivateClient';
 import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus';
@@ -31,11 +31,8 @@ function mapStatus(binanceStatus: string): string {
   return 'pending';
 }
 
-export async function POST() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export async function POST(req: NextRequest) {
+  const user = await getApiUser(req);
 
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
 

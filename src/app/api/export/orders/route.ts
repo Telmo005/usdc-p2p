@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { getApiUser } from '@/lib/apiAuth';
 import { query } from '@/lib/db';
 
 function csvEscape(value: unknown): string {
@@ -12,10 +12,7 @@ function csvEscape(value: unknown): string {
  *  period the Análise page shows - no aggregation, one row per order, so
  *  it can be dropped straight into a spreadsheet. */
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getApiUser(req);
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
 
   const daysParam = req.nextUrl.searchParams.get('days');

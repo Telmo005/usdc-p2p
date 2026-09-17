@@ -60,6 +60,37 @@ as $$
   select exists (select 1 from p2p_manager.profiles where id = auth.uid() and role = 'admin');
 $$;
 
+-- Column-level grant fix (Android/PostgREST access path): revoke UPDATE on
+-- the `role` column itself for the roles PostgREST uses. Column privileges
+-- are checked before RLS, so this blocks any PATCH payload containing
+-- "role" outright, regardless of the row-level policy below. Needed because
+-- profiles_update's USING clause only restricts *which row* can be touched,
+-- not *which columns* - without this, an authenticated non-admin could PATCH
+-- their own row and set role='admin', which every other table's RLS policy
+-- then trusts via `... or p2p_manager.is_admin()`.
+revoke update (role) on p2p_manager.profiles from authenticated;
+revoke update (role) on p2p_manager.profiles from anon;
+
+-- Defense in depth: even if a future migration re-grants that column, block
+-- the actual change in a trigger too.
+create or replace function p2p_manager.prevent_role_self_escalation()
+returns trigger
+language plpgsql
+security definer set search_path = p2p_manager, pg_temp
+as $$
+begin
+  if new.role is distinct from old.role and not p2p_manager.is_admin() then
+    raise exception 'Only admins can change profiles.role' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_prevent_role_self_escalation on p2p_manager.profiles;
+create trigger profiles_prevent_role_self_escalation
+  before update on p2p_manager.profiles
+  for each row execute function p2p_manager.prevent_role_self_escalation();
+
 -- ---------------------------------------------------------------------------
 -- payment_methods
 -- ---------------------------------------------------------------------------
@@ -405,6 +436,12 @@ create index if not exists sim_sales_user_idx on p2p_manager.sim_sales (user_id,
 -- access control for THIS app's current code path - every query in the
 -- application layer must still explicitly filter by user_id itself. See
 -- lib/db.ts.
+--
+-- Update: `p2p_manager` IS now added to the exposed-schemas list, for the
+-- native Android app, which talks to Supabase via PostgREST + Auth (JWT)
+-- directly - no DATABASE_URL, no service role. For that access path these
+-- policies ARE the real (and only) access control, which is why the
+-- profiles.role column-grant fix above exists.
 -- ---------------------------------------------------------------------------
 alter table p2p_manager.profiles enable row level security;
 alter table p2p_manager.payment_methods enable row level security;
@@ -429,7 +466,7 @@ alter table p2p_manager.sim_sales enable row level security;
 drop policy if exists profiles_select on p2p_manager.profiles;
 create policy profiles_select on p2p_manager.profiles for select using (id = auth.uid() or p2p_manager.is_admin());
 drop policy if exists profiles_update on p2p_manager.profiles;
-create policy profiles_update on p2p_manager.profiles for update using (id = auth.uid() or p2p_manager.is_admin());
+create policy profiles_update on p2p_manager.profiles for update using (id = auth.uid() or p2p_manager.is_admin()) with check (id = auth.uid() or p2p_manager.is_admin());
 
 drop policy if exists payment_methods_all on p2p_manager.payment_methods;
 create policy payment_methods_all on p2p_manager.payment_methods for all using (user_id = auth.uid() or p2p_manager.is_admin()) with check (user_id = auth.uid());
